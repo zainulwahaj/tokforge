@@ -233,3 +233,41 @@ async fn empty_input_and_output_failures_terminate_cleanly() {
         .unwrap()
         .is_err());
 }
+
+#[tokio::test]
+async fn batch_records_and_ids_only_share_the_jsonl_envelope() {
+    let input = concat!(
+        "{\"op\":\"batch\",\"operations\":[{\"op\":\"count\",\"text\":\"hello world\"},{\"op\":\"decode\",\"ids\":[99]}]}\n",
+        "{\"op\":\"encode\",\"text\":\"hello\",\"ids_only\":true}\n",
+        "{\"op\":\"batch\",\"operations\":[{\"op\":\"batch\",\"operations\":[]}]}\n",
+    );
+    let mut output = Vec::new();
+    let summary = process(
+        io::Cursor::new(input.as_bytes().to_vec()),
+        &mut output,
+        support::pool(2, 2),
+        BatchConfig::default(),
+        Cancellation::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!((summary.records, summary.errors), (3, 0));
+    let rows: Vec<Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows[0]["line"], 1);
+    assert_eq!(rows[0]["result"]["schema_version"], 1);
+    assert_eq!(rows[0]["result"]["results"][0]["count"], 2);
+    assert_eq!(
+        rows[0]["result"]["results"][1]["error"]["code"],
+        "tokenizer_error"
+    );
+    assert_eq!(rows[1]["result"]["encoding"]["ids"], json!([4]));
+    assert!(rows[1]["result"]["encoding"].get("offsets").is_none());
+    assert_eq!(
+        rows[2]["result"]["results"][0]["error"]["code"],
+        "invalid_request"
+    );
+}

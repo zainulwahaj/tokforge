@@ -1,0 +1,17 @@
+ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ ０１２３４５６７８９
+！＂＃＄％＆＇（）＊＋，－．／：；＜＝＞？＠［＼］＾＿｀｛｜｝～ ｡｢｣､･
+Ｆｕｌｌｗｉｄｔｈ Ｌａｔｉｎ ｔｅｘｔ ｌｏｏｋｓ ｌｉｋｅ ｔｈｉｓ． Ｈｅｌｌｏ， Ｗｏｒｌｄ！ １２３４．５６
+Halfwidth katakana: ｶﾀｶﾅ ﾊﾟｿｺﾝ ﾀﾞｲｶﾞｸ ｴｰﾄﾞ (with ﾞ ﾟ marks) vs fullwidth カタカナ パソコン ダイガク
+Latin ligatures: ﬀ ﬁ ﬂ ﬃ ﬄ ﬅ ﬆ (U+FB00–U+FB06): efﬁcient ﬂow ofﬁce afﬂuent ﬀort ﬆop
+Precomposed letters (not compatibility): Æ æ Œ œ Ĳ ĳ ǆ ǉ ǌ ǳ Ŋ ŋ Ð ð Þ þ Ŧ ŧ Ħ ħ
+Roman numerals: Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅸ Ⅹ Ⅻ ⅰ ⅱ ⅲ ⅳ Ⅼ Ⅽ Ⅾ Ⅿ
+Enclosed: ① ② ③ ⑩ ⑳ ⒈ ⒉ ⒜ ⒝ Ⓐ ⓑ ⓒ ㊀ ㊁ ㈱ ㈲ ㉿ 🄰 🅱 🆎 🆗
+Arabic presentation forms A: ﷺ ﷲ ﷴ ﷸ ﷻ ﭐ ﭑ ﱞ ﳰ ﷽
+Arabic presentation forms B: ﻻ ﻼ ﺍﻟﺴﻼﻡ ﻋﻠﻴﻜﻢ ﺑﺴﻢ ﺍﷲ ﺍﻟﺮﺣﻤﻦ ﺍﻟﺮﺣﻴﻢ ﺀ ﺁ ﺂ ﺃ ﺄ
+Squared CJK: ㍿ ㌀ ㌁ ㎞ ㎏ ㏂ ㏘ ㋿ ㍻ ㍼ ㍽ ㍾ ㈠ ㈡ ㈪ ㈫
+Superscripts/subscripts: ⁰¹²³⁴⁵⁶⁷⁸⁹ ⁺⁻⁼⁽⁾ ⁿ ⁱ ₀₁₂₃₄₅₆₇₈₉ ₊₋₌₍₎ ₐₑₒₓₔ
+Fractions: ½ ⅓ ⅔ ¼ ¾ ⅕ ⅙ ⅛ ⅜ ⅝ ⅞ ⅟
+Small forms and vertical forms: ︰ ︱ ︳ ﹐ ﹑ ﹒ ﹔ ﹕ ﹖ ﹗ ﹙ ﹚ ﹛ ﹜ ﹝ ﹞ ﹟ ﹠ ﹡ ﹢ ﹣ ﹤ ﹥ ﹦ ﹨ ﹩ ﹪ ﹫
+Letterlike symbols: ℀ ℁ ℂ ℃ ℅ ℆ ℉ ℊ ℋ ℌ ℍ ℎ ℏ ℐ ℑ ℒ ℓ ℕ № ℗ ℘ ℙ ℚ ℛ ℜ ℝ ℞ ℟ ℠ ℡ ™ ℤ ℧ Ω ℩ K Å ℬ ℭ ℮ ℯ ℰ ℱ Ⅎ ℳ ℴ ℵ ℹ
+Mathematical alphanumerics: 𝐀𝐁𝐂 𝑎𝑏𝑐 𝒜ℬ𝒞 𝔞𝔟𝔠 𝕒𝕓𝕔 𝖺𝖻𝖼 𝟎𝟏𝟐 𝟘𝟙𝟚 𝚊𝚋𝚌
+Fullwidth and halfwidth forms mixed with ASCII: Ａa Ｂb １1 ２2 ！! ？? ｡. ､,

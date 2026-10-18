@@ -13,7 +13,7 @@ use fast_tokenizer::{
     batch::{self, BatchConfig},
     work::{execute, Cancellation, CpuPool, Operation},
 };
-use fast_tokenizer::{EncodeOptions, Engine, SpecialTokens};
+use fast_tokenizer::{CoreMode, EncodeOptions, Engine, SpecialTokens};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -33,7 +33,7 @@ enum Command {
     /// Count tokens in UTF-8 text.
     Count(TextCommand),
     /// Encode text into IDs, tokens, and source byte offsets.
-    Encode(TextCommand),
+    Encode(EncodeCommand),
     /// Decode a JSON array of unsigned token IDs.
     Decode {
         #[arg(long)]
@@ -121,6 +121,15 @@ struct TextCommand {
 }
 
 #[derive(Args)]
+struct EncodeCommand {
+    #[command(flatten)]
+    text: TextCommand,
+    /// Return only IDs and the count: no token strings, offsets, or mask.
+    #[arg(long)]
+    ids_only: bool,
+}
+
+#[derive(Args)]
 struct BudgetCommand {
     #[command(flatten)]
     text: TextCommand,
@@ -134,6 +143,16 @@ enum SpecialPolicy {
     Recognize,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum CorePolicy {
+    /// Custom byte-level BPE core when the artifact qualifies, otherwise the backend.
+    Auto,
+    /// Always the Hugging Face backend.
+    Backend,
+    /// Run both cores on every request and fail requests where they disagree.
+    Verify,
+}
+
 #[derive(Args)]
 struct Model {
     /// Local Hugging Face tokenizer.json artifact.
@@ -145,6 +164,10 @@ struct Model {
     /// How special-token spellings inside input text are handled.
     #[arg(long, value_enum, default_value = "literal")]
     special_tokens: SpecialPolicy,
+    /// Which tokenization core serves encode and count. `verify` stays the default
+    /// until the differential soak passes clean; pass `auto` to opt into the custom core alone.
+    #[arg(long, value_enum, default_value = "verify")]
+    core: CorePolicy,
 }
 
 impl Model {
@@ -154,6 +177,11 @@ impl Model {
             special_tokens: match self.special_tokens {
                 SpecialPolicy::Literal => SpecialTokens::Literal,
                 SpecialPolicy::Recognize => SpecialTokens::Recognize,
+            },
+            core: match self.core {
+                CorePolicy::Auto => CoreMode::Auto,
+                CorePolicy::Backend => CoreMode::Backend,
+                CorePolicy::Verify => CoreMode::Verify,
             },
         };
         Engine::from_file(&self.tokenizer, options)
@@ -192,6 +220,8 @@ fn run(cli: Cli) -> Result<Vec<u8>> {
         Command::Info { tokenizer } => {
             let mut info = json!({
                 "name": "fast-tokenizer", "version": fast_tokenizer::VERSION,
+                "schema_version": fast_tokenizer::work::SCHEMA_VERSION,
+                "backend": fast_tokenizer::work::BACKEND,
                 "status": "ready", "commands": ["info", "count", "encode", "decode", "truncate", "chunk", "serve", "jsonl"],
             });
             if let Some(path) = tokenizer {
@@ -212,11 +242,12 @@ fn run(cli: Cli) -> Result<Vec<u8>> {
             )?)
         }
         Command::Encode(args) => {
-            let engine = args.model.load()?;
+            let engine = args.text.model.load()?;
             Ok(execute(
                 &engine,
                 Operation::Encode {
-                    text: args.input.read()?,
+                    text: args.text.input.read()?,
+                    ids_only: args.ids_only,
                 },
             )?)
         }

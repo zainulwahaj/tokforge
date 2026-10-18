@@ -13,7 +13,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::OwnedSemaphorePermit;
 
-use crate::work::{Cancellation, CpuPool, Operation, WorkError};
+use crate::work::{
+    Cancellation, CpuPool, Operation, WorkError, BACKEND, MAX_BATCH_OPERATIONS, SCHEMA_VERSION,
+};
 
 #[derive(Clone, Copy)]
 pub struct ApiConfig {
@@ -33,12 +35,14 @@ impl Default for ApiConfig {
 pub fn router(pool: CpuPool, config: ApiConfig) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/metrics", get(metrics))
         .route("/v1/info", get(info))
         .route("/v1/count", post(count))
         .route("/v1/encode", post(encode))
         .route("/v1/decode", post(decode))
         .route("/v1/truncate", post(truncate))
         .route("/v1/chunk", post(chunk))
+        .route("/v1/batch", post(batch))
         .route("/v1/process", post(process))
         .fallback(|| async { failure(StatusCode::NOT_FOUND, "not_found", "unknown endpoint") })
         .layer(DefaultBodyLimit::max(config.max_body_bytes))
@@ -69,10 +73,24 @@ async fn health(State(pool): State<CpuPool>) -> Response {
     }
 }
 
+/// Prometheus text exposition of the pool's counters; never admitted through the CPU pool.
+async fn metrics(State(pool): State<CpuPool>) -> Response {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        pool.metrics().render(pool.capacity(), pool.in_flight()),
+    )
+        .into_response()
+}
+
 async fn info(State(pool): State<CpuPool>) -> Json<Value> {
     Json(json!({"name": "fast-tokenizer", "version": crate::VERSION,
+        "schema_version": SCHEMA_VERSION, "backend": BACKEND,
         "artifact": pool.engine().artifact(), "options": pool.engine().options(),
-        "capacity": pool.capacity()}))
+        "capacity": pool.capacity(), "in_flight": pool.in_flight(),
+        "max_batch_operations": MAX_BATCH_OPERATIONS}))
 }
 
 struct Admission(OwnedSemaphorePermit);
@@ -93,6 +111,14 @@ struct TextInput {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct EncodeInput {
+    text: String,
+    #[serde(default)]
+    ids_only: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DecodeInput {
     ids: Vec<u32>,
     #[serde(default)]
@@ -104,6 +130,12 @@ struct DecodeInput {
 struct BudgetInput {
     text: String,
     max_tokens: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchInput {
+    operations: Vec<Operation>,
 }
 
 type Payload<T> = Result<Json<T>, JsonRejection>;
@@ -124,10 +156,11 @@ async fn count(
 async fn encode(
     State(pool): State<CpuPool>,
     Admission(permit): Admission,
-    payload: Payload<TextInput>,
+    payload: Payload<EncodeInput>,
 ) -> Response {
     dispatch(pool, permit, payload, |input| Operation::Encode {
         text: input.text,
+        ids_only: input.ids_only,
     })
     .await
 }
@@ -164,6 +197,18 @@ async fn chunk(
     dispatch(pool, permit, payload, |input| Operation::Chunk {
         text: input.text,
         max_tokens: input.max_tokens,
+    })
+    .await
+}
+
+/// One admission slot runs every operation of the batch in order on a single worker.
+async fn batch(
+    State(pool): State<CpuPool>,
+    Admission(permit): Admission,
+    payload: Payload<BatchInput>,
+) -> Response {
+    dispatch(pool, permit, payload, |input| Operation::Batch {
+        operations: input.operations,
     })
     .await
 }
@@ -205,7 +250,7 @@ fn work_failure(error: WorkError) -> Response {
         WorkError::Busy | WorkError::Cancelled | WorkError::Engine(crate::Error::Cancelled) => {
             StatusCode::SERVICE_UNAVAILABLE
         }
-        WorkError::Engine(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        WorkError::Engine(_) | WorkError::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
         WorkError::Failed => StatusCode::INTERNAL_SERVER_ERROR,
     };
     let mut response = failure(status, error.code(), &error.to_string());

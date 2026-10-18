@@ -8,7 +8,15 @@ The shared engine and CLI support `info`, `count`, `encode`, `decode`, `truncate
 and `chunk`, using a local Hugging Face `tokenizer.json` artifact. `serve` exposes
 the same operations over HTTP, and `jsonl` processes ordered streaming records.
 All results are JSON. The release benchmark runner and measured optimization
-results are described in [PERFORMANCE.md](PERFORMANCE.md).
+results are described in [PERFORMANCE.md](PERFORMANCE.md). For GPT-2 and
+Qwen2-style artifacts, encode and count run on a custom byte-level BPE core that
+is bit-identical to the Hugging Face backend and verified differentially; other
+artifacts use the backend. Correctness against
+four pinned production artifacts (GPT-2, Qwen2.5, BERT, XLM-R) is checked by
+`tests/reference.rs` using committed golden IDs from independent oracles; see
+[models/README.md](models/README.md) for fetching the artifacts and
+`tests/fixtures/golden/KNOWN_DIFFERENCES.json` for the documented divergences
+between the Hugging Face backend and the original implementations.
 
 ## Try the CLI
 
@@ -32,6 +40,12 @@ shell pipelines may add a newline or change encoding, so prefer files when
 exact source bytes matter. Invalid input exits unsuccessfully with an error on
 stderr.
 
+`encode --ids-only` returns only IDs and the count. `--core backend` forces the
+Hugging Face backend for an artifact the custom core would otherwise serve, and
+`--core verify` runs both on every request and fails any request where they
+disagree. `info --tokenizer <path>` reports `artifact.core`, the response schema
+version, and the locked backend crate version.
+
 ## HTTP API
 
 Start a server (substitute your production tokenizer when ready):
@@ -53,17 +67,21 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/v1/count -ContentType 
 | Endpoint | JSON request |
 | --- | --- |
 | `GET /health` | None |
-| `GET /v1/info` | None; reports artifact, options, and total CPU capacity |
+| `GET /metrics` | None; Prometheus text: requests per operation, job outcomes, busy rejections, in-flight jobs, capacity, uptime |
+| `GET /v1/info` | None; reports artifact (with the active core), options, schema and backend versions, capacity, in-flight jobs |
 | `POST /v1/count` | `{"text":"hello world!"}` |
-| `POST /v1/encode` | `{"text":"hello world!"}` |
+| `POST /v1/encode` | `{"text":"hello world!"}`, or add `"ids_only":true` for IDs and count only |
 | `POST /v1/decode` | `{"ids":[4,5,6],"skip_special_tokens":false}` |
 | `POST /v1/truncate` | `{"text":"hello world!","max_tokens":2}` |
 | `POST /v1/chunk` | `{"text":"hello world!","max_tokens":2}` |
+| `POST /v1/batch` | `{"operations":[{"op":"count","text":"a"},{"op":"encode","text":"b","ids_only":true}]}`: up to 256 operations run in order under one admission slot; each item carries its result or its own `error` |
 | `POST /v1/process` | Any operation record from the JSONL format below |
 
 Successful operation responses have the same result fields as the corresponding
-CLI command, with artifact identity and effective options. Unknown request
-fields are rejected. Operation errors use
+CLI command, preceded by `schema_version` (1; bumped only for incompatible
+changes), `engine_version`, `backend` (the locked `tokenizers` crate version),
+`artifact` (hash, vocabulary size, suppressed special pieces, active core), and
+the effective `options`. Unknown request fields are rejected. Operation errors use
 `{"error":{"code":"tokenizer_error","message":"..."}}`.
 
 CPU work runs on dedicated Rayon threads, including result serialization.
@@ -89,6 +107,8 @@ Each physical input line is one operation object. Available operations:
 {"op":"decode","ids":[4,5,6],"skip_special_tokens":false}
 {"op":"truncate","text":"hello world!","max_tokens":2}
 {"op":"chunk","text":"hello\r\nworld!","max_tokens":2}
+{"op":"encode","text":"hello","ids_only":true}
+{"op":"batch","operations":[{"op":"count","text":"a"},{"op":"decode","ids":[4]}]}
 ```
 
 Run against a file or leave out `--file` to read stdin:
@@ -127,17 +147,43 @@ its CPU slot until that call returns, even if the HTTP deadline has expired.
 ## Tokenization contract
 
 - Every model-backed response includes the SHA-256 of the original artifact
-  bytes and its vocabulary size. Encoding responses also report the effective
-  special-token options. Record the source model and revision alongside your
-  artifact; the hash does not identify its upstream model name.
+  bytes, its vocabulary size, and `suppressed_special_pieces` (see below).
+  Encoding responses also report the effective special-token options. Record
+  the source model and revision alongside your artifact; the hash does not
+  identify its upstream model name.
 - Saved padding and truncation are disabled so the entire input is counted.
   BPE dropout is rejected to keep results reproducible.
 - Special-token spellings in text are treated literally by default. Use
   `--special-tokens recognize` to enable the artifact's registered special-token
   matching. Separately, `--add-special-tokens` enables post-processing such as
-  BOS/EOS insertion. These extra tokens count toward the budget. Literal mode
-  disables special matching; the underlying model can still emit a special ID
-  if that spelling exists in its normal vocabulary.
+  BOS/EOS insertion. These extra tokens count toward the budget.
+- Literal mode guarantees that text never yields a registered special-token ID.
+  Added-token matching is off, and at load time the engine also makes every
+  special spelling that the model lists as an ordinary piece unreachable:
+  Unigram pieces are rescored to negative infinity (the unknown penalty is kept
+  as it was), WordPiece and WordLevel entries leave the lookup table, and BPE
+  loses the merges that would form the spelling (plus the entry itself when the
+  model uses `ignore_merges`). IDs, decoding and the artifact hash are
+  unchanged; `artifact.suppressed_special_pieces` reports how many spellings
+  were touched so results stay reproducible (0 in Recognize mode; 0 for GPT-2
+  and Qwen2.5, whose special tokens no merge can form; 4 for BERT; 5 for XLM-R).
+  Two limits are explicit. The unknown token's own spelling stays reachable in
+  WordPiece, WordLevel and BPE because those models find the unknown ID through
+  it, so literal `[UNK]` can still count as unknown text. Loading fails in
+  Literal mode when a special spelling is a single scalar or, for Unigram,
+  contains a scalar without a piece of its own, because no suppression exists
+  there that leaves other text unchanged; use Recognize mode for such artifacts.
+- Encode and count are served by the custom byte-level BPE core when the artifact
+  qualifies: plain BPE merges over the GPT-2 byte alphabet, the GPT-2 or Qwen2
+  pre-tokenizer regex, no normalizer or NFC, added tokens without strip or
+  single-word rules, no token-adding post-processor, and nothing suppressed by
+  Literal mode. The core is enabled only after a load-time self-check against
+  the backend and is bit-identical to it on every input it accepts (IDs, tokens,
+  offsets, word indices, mask); inputs it cannot reproduce exactly (text that
+  NFC would change, or a case-folded contraction) are served by the backend per
+  request. `artifact.core` names the active core; `--core backend` forces the
+  backend and `--core verify` runs both on every request and fails it if they
+  disagree. `tests/bytelevel.rs` is the differential proof.
 - Decode preserves special tokens unless `--skip-special-tokens` is set and
   rejects unknown IDs. Decoding follows the artifact's normalization/decoder;
   arbitrary models do not guarantee an exact text round trip.
@@ -148,15 +194,24 @@ its CPU slot until that call returns, even if the HTTP deadline has expired.
   nonoverlapping slices covering the entire source, including whitespace.
   Each output is independently re-encoded and verified against `--max-tokens`.
   Source ranges use an inclusive `start_byte` and exclusive `end_byte`.
-  Cuts preserve Unicode scalars, but may split words or grapheme clusters.
-- Chunk prefix search probes local windows, reuses the previous chunk's byte
-  length as a density estimate, and stops once a verified budget-filling prefix
-  is found. It avoids repeatedly encoding the entire remaining document and
-  allocating a character-boundary table per chunk. Truncate first checks whether
-  the entire input fits. Token counts can decrease as text grows, so neither
+  Cuts preserve Unicode scalars and never separate CR from LF. Chunk cuts
+  prefer, in order, a blank line, a line break, a sentence end followed by
+  whitespace, and a pre-tokenizer word boundary, taking the strongest boundary
+  that still fills at least half the budget; otherwise they take the fullest
+  subword or scalar boundary. Truncate prefers a word boundary under the same
+  rule. Grapheme clusters may still split at the subword level.
+- Cuts are guided by one encoding of a bounded window of the remaining text:
+  token byte offsets and word indices predict where the budget runs out, and
+  the verified density of the previous chunk sizes the next window. Every
+  candidate is verified by encoding that slice on its own; a measured overshoot
+  shrinks the candidate set before retrying. Truncate first checks whether the
+  entire input fits. Token counts can decrease as text grows, so neither
   operation promises the longest possible prefix or fullest possible chunks.
-  A rare exhaustive fallback handles cases where no local prefix fits but a
-  later merge or normalization could help; this fallback can still be quadratic.
+  A rare exhaustive fallback tries the whole remainder, every token boundary in
+  the guide window, then the 1,024 scalar boundaries nearest the slice start,
+  longest first. Work per cut is bounded by the window plus that limit rather
+  than by the document; a prefix that would only fit beyond the limit is
+  reported as no fit (`BudgetTooSmall`).
 - Zero budgets are accepted: truncate may return empty text, while chunk
   fails if it cannot make progress. Empty source yields zero chunks. If the
   empty prefix's added special tokens exceed the budget, truncate fails.
@@ -208,16 +263,29 @@ selected workspace or its permission scope.
 
 ## Next implementation steps
 
-1. Profile production tokenizers and datasets, including tail latency and allocations.
-2. Expand fixtures to real model artifacts and cross-implementation comparisons.
-3. Tune batch sizes and worker counts against measured throughput and memory use.
+1. Keep publishing real-artifact throughput and tail latency from the runner
+   (`--tokenizer`, `--corpus`, `--http-load`) on a quiet machine; see PERFORMANCE.md.
+2. Decide whether the remaining backend divergences in `tests/fixtures/golden/KNOWN_DIFFERENCES.json`
+   (Precompiled-normalizer composition, U+0085 as whitespace, category-Cn stripping)
+   need engine-side fixes; the Literal-mode control-piece leak on XLM-R is closed by
+   load-time suppression.
+3. Extend the custom core to more byte-level families (Llama 3 regex, `ignore_merges`
+   artifacts) under the same differential gate, and tune worker/window/batch sizes
+   from measurements.
 
 The current tests cover known IDs and byte offsets, saved padding/truncation
-overrides, special tokens, malformed input, Unicode byte-level round trips,
+overrides, special tokens, Literal-mode suppression of model-internal special
+pieces (Unigram, WordPiece, BPE) with unknown-handling controls, malformed
+input, Unicode byte-level round trips,
 source reconstruction, nonmonotonic token counts, and CLI file/stdin handling.
 API and pipeline tests also cover HTTP limits, overload, slow-body deadlines,
 ordered output, bounded read-ahead, record recovery, cancellation, and output
-file preservation.
+file preservation. The reference suite (`cargo test --test reference -- --show-output`)
+compares the engine with tiktoken, sentencepiece, and the slow transformers
+tokenizers on 15 corpus files per artifact in both special-token modes, checks
+decode round trips where the model allows them, and verifies chunk/truncate
+invariants at budgets 1, 7, 64, and 512; it prints `SKIPPED` and passes when the
+gitignored model files are absent.
 The tokenizer integration uses the [tokenizers Rust API](https://docs.rs/tokenizers/0.22.2/tokenizers/tokenizer/struct.TokenizerImpl.html).
 HTTP limits follow [Axum's body-limit API](https://docs.rs/axum/0.8.9/axum/extract/struct.DefaultBodyLimit.html);
 CPU work uses [Rayon thread pools](https://docs.rs/rayon/latest/rayon/struct.ThreadPool.html).

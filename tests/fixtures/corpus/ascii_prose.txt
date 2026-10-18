@@ -1,0 +1,17 @@
+The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.
+It's a well-known fact that tokenizers don't always agree: they've got different rules,
+and we're here to find out where they'd diverge. I'm fairly sure we'll see a few surprises,
+but I'd rather know now than later. "Quoted text," she said, "isn't the same as 'single-quoted'."
+
+Second paragraph -- with a double-hyphen dash, an ellipsis... and (parenthetical asides).
+Hyphenated compounds like state-of-the-art, well-defined, and twenty-one appear often;
+so do abbreviations: e.g., i.e., etc., Dr. Smith, Mr. T, U.S.A., and the U.K.
+Numbers in words: one, two, three; thirty-seven; one thousand and one.
+
+Third paragraph tests sentence-final punctuation! Does it? Yes. No?! Maybe...
+A colon introduces a list: apples, oranges, pears; a semicolon separates clauses.
+Title Case Words And ALL CAPS WORDS and camelCaseWords and snake_case_words and kebab-case-words.
+The year 1999 preceded 2000, which preceded 2001; 42 is the answer, 3.14 is pi, and 1,000,000 is a million.
+
+Final paragraph. A tokenizer is a function from text to a sequence of integer identifiers.
+A good one is deterministic, fast, and reversible where the model allows it. The end.

@@ -185,3 +185,88 @@ async fn slow_request_bodies_time_out_and_release_admission() {
     assert!(pool.reserve().is_ok());
     server.abort();
 }
+
+#[tokio::test]
+async fn batch_metrics_ids_only_and_response_header_fields() {
+    let app = router(support::pool(2, 2), ApiConfig::default());
+    let (status, lean) = call(
+        &app,
+        "/v1/encode",
+        json!({"text": "hello world!", "ids_only": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(lean["encoding"]["ids"], json!([4, 5, 6]));
+    assert_eq!(lean["encoding"]["count"], 3);
+    assert!(lean["encoding"].get("tokens").is_none());
+    assert_eq!(lean["schema_version"], 1);
+    assert!(lean["backend"].as_str().unwrap().starts_with("tokenizers "));
+    assert_eq!(lean["engine_version"], fast_tokenizer::VERSION);
+
+    let (status, batch) = call(
+        &app,
+        "/v1/batch",
+        json!({"operations": [
+            {"op": "count", "text": "hello world"},
+            {"op": "decode", "ids": [99]},
+            {"op": "encode", "text": "hello", "ids_only": true},
+        ]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let results = batch["results"].as_array().unwrap();
+    assert_eq!(results.len(), 3);
+    assert_eq!(results[0]["count"], 2);
+    assert_eq!(results[1]["error"]["code"], "tokenizer_error");
+    assert_eq!(results[2]["encoding"]["ids"], json!([4]));
+    let (status, nested) = call(
+        &app,
+        "/v1/batch",
+        json!({"operations": [{"op": "batch", "operations": []}]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(nested["results"][0]["error"]["code"], "invalid_request");
+
+    let response = app
+        .clone()
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = String::from_utf8(
+        response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(
+        text.contains("tokenizer_requests_total{op=\"batch\"} 3"),
+        "{text}"
+    );
+    assert!(
+        text.contains("tokenizer_requests_total{op=\"encode\"} 2"),
+        "{text}"
+    );
+    assert!(
+        text.contains("tokenizer_jobs_total{outcome=\"completed\"} 3"),
+        "{text}"
+    );
+    assert!(text.contains("tokenizer_capacity 4"), "{text}");
+    assert!(text.contains("tokenizer_in_flight 0"), "{text}");
+
+    let response = app
+        .clone()
+        .oneshot(Request::get("/v1/info").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let info: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(info["schema_version"], 1);
+    assert_eq!(info["max_batch_operations"], 256);
+    assert!(info["backend"].as_str().unwrap().starts_with("tokenizers "));
+}

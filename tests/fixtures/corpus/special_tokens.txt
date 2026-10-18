@@ -1,0 +1,22 @@
+GPT-2 / Qwen style: <|endoftext|> <|im_start|> <|im_end|> <|fim_prefix|> <|fim_middle|> <|fim_suffix|> <|fim_pad|> <|repo_name|> <|file_sep|>
+<|endoftext|>glued <|endoftext|>to<|endoftext|> words<|endoftext|>
+<|im_start|>system
+You are a helpful assistant.<|im_end|>
+<|im_start|>user
+Hello!<|im_end|>
+<|im_start|>assistant
+Qwen vision/tool spellings: <|vision_start|><|image_pad|><|vision_end|> <|object_ref_start|>x<|object_ref_end|> <|box_start|>(1,2)<|box_end|> <tool_call></tool_call> <|quad_start|><|quad_end|> <|video_pad|>
+BERT style: [CLS] [SEP] [MASK] [PAD] [UNK] [cls] [sep] [ CLS ] [CLS][SEP] word[MASK]word The capital of France is [MASK].
+RoBERTa / XLM-R style: <s> </s> <pad> <unk> <mask> <s>text</s> <s><s></s></s> word<mask>word the <mask> is here <mask>. <mask>leading
+Partial and malformed: <|endoftext <|endoftext|| endoftext|> <|endof text|> [CLS [SEP]] <s </s> <<s>> <|im_start| |endoftext|> <| endoftext |>
+Case and spacing variants: <|EndOfText|> <|ENDOFTEXT|> [Cls] <S> </S> < s > [ MASK ] [MASK ] [ MASK] <mask > < mask>
+Adjacent punctuation: ,<|endoftext|>. "<|endoftext|>" (<s>) [CLS]! <mask>? <|im_end|>; <s>, </s>.
+Adjacent whitespace:  <|endoftext|>  	<s>	
+<|endoftext|>
+[CLS]
+<s>
+Llama style: <s> </s> <0x0A> <0x20> [INST] [/INST] <<SYS>> <</SYS>> <|begin_of_text|> <|eot_id|> <|start_header_id|>user<|end_header_id|>
+Other: <|startoftext|> <|pad|> <|sep|> <|cls|> <unk> <|unk|> <extra_id_0> <extra_id_99> ▁ ## Ġ Ċ ▁word ##piece Ġbyte Ċ
+Repeated: <|endoftext|><|endoftext|><|endoftext|> [SEP][SEP][SEP] </s></s></s> <mask><mask>
+Unicode confusables: ＜|endoftext|＞ ‹s› 〈s〉 ［CLS］ <|endoftext|＞ <|ｅndoftext|>
+Ends with special token without trailing newline: <|endoftext|>

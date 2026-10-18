@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "artifact": "xlm-roberta-base",
+  "artifact_sha256": "a898ea75433890f6610f4e470b8ebeb0c21dce5c8dd61f892eb09eb5919d2e2c",
+  "corpus_file": "empty.txt",
+  "corpus_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "corpus_bytes": 0,
+  "text_is_nfc": true,
+  "generator": "tests/fixtures/golden/generate.py",
+  "python": "3.12.10",
+  "oracle": "sentencepiece 0.2.2 (fairseq offset: spm id k>=3 -> k+1, <unk> 0 -> 3); transformers 4.57.6 XLMRobertaTokenizer (slow, sentencepiece-backed)",
+  "cross_check": "tokenizers 0.22.2 (Python bindings of the HF Rust backend)",
+  "cases": [
+    {
+      "special_tokens": "literal",
+      "add_special_tokens": false,
+      "oracle": "sentencepiece 0.2.2 (fairseq offset: spm id k>=3 -> k+1, <unk> 0 -> 3)",
+      "ids": [],
+      "cross_check_matches": true
+    },
+    {
+      "special_tokens": "recognize",
+      "add_special_tokens": false,
+      "oracle": "transformers 4.57.6 XLMRobertaTokenizer (slow, sentencepiece-backed)",
+      "ids": [],
+      "cross_check_matches": true
+    },
+    {
+      "special_tokens": "literal",
+      "add_special_tokens": true,
+      "oracle": "transformers 4.57.6 XLMRobertaTokenizer (slow, sentencepiece-backed)",
+      "ids": [0,2],
+      "cross_check_matches": true
+    },
+    {
+      "special_tokens": "recognize",
+      "add_special_tokens": true,
+      "oracle": "transformers 4.57.6 XLMRobertaTokenizer (slow, sentencepiece-backed)",
+      "ids": [0,2],
+      "cross_check_matches": true
+    }
+  ]
+}

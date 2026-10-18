@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "description": "Engine-vs-oracle differences that were investigated and documented rather than papered over. Golden files always hold the oracle's raw output. tests/reference.rs reports a listed case as KNOWN DIFFERENCE instead of failing, and fails if a listed case starts to match (stale entry). `special_tokens` null matches both modes; `add_special_tokens` null matches both settings. Every entry below is a divergence between the Hugging Face tokenizers 0.22.2 Rust backend (which the engine uses unchanged) and the original implementation; on each of these cases the engine's IDs equal the Python `tokenizers` 0.22.2 bindings' IDs exactly.",
+  "entries": [
+    {
+      "artifact": "bert-base-uncased",
+      "corpus_file": "control_bytes.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "Unassigned code points U+0378, U+0530 and U+E01F0 (Unicode category Cn). Google's tokenization.py and the transformers port treat every category-C character as a control and drop it in clean_text; the Rust BertNormalizer keeps them, so each becomes an [UNK] word. Engine emits 5 more IDs (241 vs 236; 243 vs 238 with [CLS]/[SEP])."
+    },
+    {
+      "artifact": "bert-base-uncased",
+      "corpus_file": "emoji.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "Emoji 16.0 code points U+1FAE9, U+1FAC6, U+1FABE, U+1FADF, U+1FA89 and U+1FADC are unassigned (Cn) in the oracle's Unicode 15.0 tables (Python 3.12 unicodedata), so the oracle drops them as controls; the Rust backend keeps them and emits [UNK] for each. The reference itself depends on the Python Unicode version here. Engine emits 6 more IDs (375 vs 369; 377 vs 371 with [CLS]/[SEP])."
+    },
+    {
+      "artifact": "xlm-roberta-base",
+      "corpus_file": "combining_marks.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "Decomposed Vietnamese (e + U+0302 + U+0301 etc.): sentencepiece's nmt_nfkc normalizer composes the sequence to the precomposed letter, so the oracle yields whole-word pieces such as ▁Tiểng. The Rust Precompiled normalizer looks a short grapheme up as a whole, matches only the e + U+0302 prefix and drops the U+0301, normalizing to Tiêng Viẹt (lossy) and yielding ▁Tiên, g, ▁Vi, ẹ, t. Engine emits 12 more IDs (610 vs 598; 612 vs 600 with <s>/</s>)."
+    },
+    {
+      "artifact": "xlm-roberta-base",
+      "corpus_file": "hangul.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "Conjoining jamo sequences (U+1112 U+1161 U+11AB ...): sentencepiece composes them into Hangul syllables (한국어) before segmentation. The Rust Precompiled normalizer normalizes any grapheme of 6 or more UTF-8 bytes code point by code point, so a 9-byte L+V+T jamo cluster is never composed and the engine emits one piece per jamo. Engine emits 11 more IDs (476 vs 465; 478 vs 467 with <s>/</s>)."
+    },
+    {
+      "artifact": "xlm-roberta-base",
+      "corpus_file": "fullwidth_ligatures.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "Half-width katakana with separate voicing marks (U+FF8A U+FF9F ...): NFKC in sentencepiece composes them (パソコン). The two half-width code points form a 6-byte grapheme, so the Rust Precompiled normalizer maps them one at a time (ﾊ to ハ, ﾟ to the combining mark U+309A) and never composes パ; the engine yields ハ, ゚, ソ, コン. Engine emits 6 more IDs (594 vs 588; 596 vs 590 with <s>/</s>)."
+    },
+    {
+      "artifact": "xlm-roberta-base",
+      "corpus_file": "control_bytes.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "U+0085 (NEL): sentencepiece keeps it as a character piece inside the word; the converted artifact's WhitespaceSplit pre-tokenizer uses Rust char::is_whitespace, which includes U+0085, so the engine splits there and Metaspace prefixes the following word with ▁. Engine emits 2 fewer IDs (342 vs 344; 344 vs 346 with <s>/</s>)."
+    },
+    {
+      "artifact": "xlm-roberta-base",
+      "corpus_file": "whitespace.txt",
+      "special_tokens": null,
+      "add_special_tokens": null,
+      "reason": "Same U+0085 (NEL) divergence as control_bytes.txt: the oracle yields \\x85, a, fter while the engine's WhitespaceSplit treats NEL as whitespace and yields ▁after. Engine emits 2 fewer IDs (207 vs 209; 209 vs 211 with <s>/</s>)."
+    }
+  ]
+}

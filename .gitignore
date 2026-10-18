@@ -7,3 +7,5 @@
 /models/*.json
 !/models/README.md
 /data/
+!/models/MANIFEST.json
+/models/oracle/

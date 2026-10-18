@@ -182,3 +182,45 @@ fn invalid_inputs_fail_without_success_json() {
         assert!(!output.stderr.is_empty());
     }
 }
+
+#[test]
+fn ids_only_encode_and_info_name_the_schema_and_backend() {
+    let lean = json(run(
+        "encode",
+        &["--ids-only", "--text", "hello world!"],
+        None,
+    ));
+    assert_eq!(lean["encoding"]["ids"], serde_json::json!([4, 5, 6]));
+    assert_eq!(lean["encoding"]["count"], 3);
+    assert!(lean["encoding"].get("tokens").is_none());
+    assert_eq!(lean["schema_version"], 1);
+    assert!(lean["backend"].as_str().unwrap().starts_with("tokenizers "));
+    let full = json(run("encode", &["--text", "hello world!"], None));
+    assert_eq!(full["encoding"]["tokens"].as_array().unwrap().len(), 3);
+    let info = json(run("info", &[], None));
+    assert_eq!(info["schema_version"], 1);
+    assert_eq!(info["artifact"]["vocab_size"], 10);
+    assert!(info["backend"].as_str().unwrap().starts_with("tokenizers "));
+}
+
+#[test]
+fn core_flag_is_reported_and_backend_can_be_forced() {
+    let auto = json(run("info", &[], None));
+    // The synthetic WordPiece fixture is never served by the custom core.
+    assert_eq!(auto["artifact"]["core"], "backend");
+    let forced = json(run(
+        "count",
+        &["--core", "backend", "--text", "hello world"],
+        None,
+    ));
+    assert_eq!(forced["count"], 2);
+    assert_eq!(forced["options"]["core"], "backend");
+    assert_eq!(forced["artifact"]["core"], "backend");
+    let verify = json(run(
+        "count",
+        &["--core", "verify", "--text", "hello world"],
+        None,
+    ));
+    assert_eq!(verify["count"], 2);
+    assert_eq!(verify["options"]["core"], "verify");
+}

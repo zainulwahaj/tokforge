@@ -1,0 +1,20 @@
+Decomposed á é í ó ú ñ ç vs precomposed á é í ó ú ñ ç
+café and café; résumé and résumé; naïve and naïve; Zürich and Zürich
+Vietnamese NFC: Tiếng Việt có nhiều dấu thanh. NFD: Tiếng Việt có nhiều dấu thanh.
+Stacked marks: é̂̃ ȫ à́̂̃̄̅̆̇̈̉̊
+Zalgo: Z͑ͫ̓ͪ̂ͫ̽͏̴̙̤̞͉͚̯̞̠͍A̴̵̜̰͔ͫ͗͢L̠ͨͧͩ͘G̴̻͈͍͔̹̑͗̎̅͛́Ǫ̵̹̻̝̳͂̌̌͘!
+Turkish: İ (U+0130) i̇ (i + U+0307) ı (dotless) I i İSTANBUL istanbul DİYARBAKIR
+Long s: ſ ſuperſede; ﬅ ligature; ß ẞ STRASSE Straße
+Greek tonos NFC: ά έ ή ί ό ύ ώ ΐ ΰ; NFD: ά έ ή ί ό ύ ώ ΐ
+Hebrew niqqud: שָׁלוֹם עוֹלָם בְּרֵאשִׁית
+Arabic harakat: مُحَمَّد السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللَّهِ; tatweel: مـــرحـــبا; shadda+fatha: بَّ
+Thai tone marks: ภาษาไทย น้ำ ก็ ที่ ใ้ ซ้ำ
+Devanagari nukta: ड़ (U+095C) vs ड़ (U+0921 U+093C); क्ष त्र ज्ञ श्र; virama: क् ख् ग्
+Bengali: ক্ষ জ্ঞ; Tamil: க்ஷ; Malayalam chillu: ൺ ൻ ർ ൽ ൾ
+Enclosing: a⃝ 1⃣ x⃞; combining enclosing keycap on digit: 5⃣
+Hangul NFC 한 vs NFD 한; 각 vs 각
+́abc leading combining mark; space before mark: ́ x; trailing mark: abć
+Multiple scripts with marks: ǆ ǉ ǌ (U+01C6 U+01C9 U+01CC) Ǳ ǲ ǳ; ŉ (U+0149); ẛ (U+1E9B)
+Cyrillic with breve: й (NFC) vs й (NFD); ё vs ё; ў vs ў
+Emoji with combining marks: 😀́ ❤́ and letter with ZWJ: a‍́b
+Angstrom sign Å (U+212B) vs Å (U+00C5) vs Å; Ohm Ω (U+2126) vs Ω (U+03A9); Kelvin K (U+212A) vs K

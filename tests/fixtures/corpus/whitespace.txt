@@ -1,0 +1,35 @@
+line one
+line two
+line three
+lone CR herenext after CRand again
+tabs:	one	two		double			triple
+	leading tab
+    four leading spaces
+trailing spaces    
+trailing tab	
+multiple   internal      spaces         here
+NBSP: here and there  double
+em space thin space hair space figure space en space
+narrow NBSP here ideographic　space ogham space
+en quad em quad three-per-em four-per-em six-per-em punctuation medium math end
+zero-width space:​between​words; zero-width no-break space (BOM) mid-text: before﻿after
+form feedand vertical tabhere
+line separator para separator end
+next line (NEL):after
+
+
+
+blank lines above (three)
+   	  
+mixed	 	 spaces and tabs
+
+
+CRLF blank lines above (two)
+lone CR blank line above
+ leading single space
+  leading double space
+a b  c   d    e     f      g       h        i
+space before punctuation , and ; and : and ! and ? and .
+			
+                                                                                                                                 
+ends without newline

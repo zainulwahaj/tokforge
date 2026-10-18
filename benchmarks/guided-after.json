@@ -1,0 +1,65 @@
+{
+  "arch": "x86_64",
+  "cpu": "Intel64 Family 6 Model 158 Stepping 9, GenuineIntel",
+  "fixture_sha256": "3629c6197797601bfd06f03d9546d17446d139c24ee094e2fce3a76ac3786a6b",
+  "os": "windows",
+  "profile": "release",
+  "measurement": "Median of three timed runs, alternating baseline then optimized, without concurrent compilation",
+  "raw_runs": [
+    "runs/guided-after-1.json",
+    "runs/guided-after-2.json",
+    "runs/guided-after-3.json"
+  ],
+  "results": [
+    {
+      "input_bytes": 33800,
+      "iterations": 26,
+      "mib_per_second": 2.7775811005934794,
+      "ms_per_iteration": 11.605130769230767,
+      "name": "count",
+      "seconds": 0.3017334,
+      "min_ms": 11.456011111111112,
+      "max_ms": 12.877450000000001
+    },
+    {
+      "input_bytes": 33800,
+      "iterations": 23,
+      "mib_per_second": 2.4125442022845682,
+      "ms_per_iteration": 13.361078260869565,
+      "name": "encode",
+      "seconds": 0.3073048,
+      "min_ms": 12.378055999999999,
+      "max_ms": 14.3886
+    },
+    {
+      "input_bytes": 33800,
+      "iterations": 27,
+      "mib_per_second": 2.8567800392196725,
+      "ms_per_iteration": 11.283399999999999,
+      "name": "truncate_128",
+      "seconds": 0.3046518,
+      "min_ms": 11.260274074074074,
+      "max_ms": 12.375424
+    },
+    {
+      "input_bytes": 33800,
+      "iterations": 10,
+      "mib_per_second": 0.9750530762971691,
+      "ms_per_iteration": 33.058910000000004,
+      "name": "chunk_128",
+      "seconds": 0.3305891,
+      "min_ms": 32.86128,
+      "max_ms": 40.6318875
+    },
+    {
+      "input_bytes": 102000,
+      "iterations": 20,
+      "mib_per_second": 6.444562904835736,
+      "ms_per_iteration": 15.094084999999998,
+      "name": "jsonl_encode_2000",
+      "seconds": 0.3018817,
+      "min_ms": 14.728995238095237,
+      "max_ms": 16.840172222222222
+    }
+  ]
+}

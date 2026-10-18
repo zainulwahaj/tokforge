@@ -1,0 +1,9 @@
+# Oracle packages that produced the committed golden files (see generate.py and each file's
+# header). transformers stays below 5: in 5.x BertTokenizer and XLMRobertaTokenizer are backed
+# by the Rust tokenizers crate, which would no longer be independent of the engine.
+#   py -3.12 -m venv .setup/oracle-venv
+#   .setup/oracle-venv/Scripts/python.exe -m pip install -r tests/fixtures/golden/requirements.txt
+tiktoken==0.14.0
+sentencepiece==0.2.2
+transformers==4.57.6
+tokenizers==0.22.2

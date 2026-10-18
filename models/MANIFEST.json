@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "description": "Pinned production tokenizer artifacts used by tests/reference.rs. Model files are gitignored; `python -I models/fetch.py` downloads them at the recorded revisions and verifies the recorded SHA-256. Hashes and type fields are filled by `python -I models/fetch.py --write-manifest` from the exact downloaded bytes.",
+  "artifacts": [
+    {
+      "name": "gpt2",
+      "family": "byte-level BPE (GPT-2 regex pre-tokenizer, no normalizer)",
+      "repo_id": "openai-community/gpt2",
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "remote_file": "tokenizer.json",
+      "file": "gpt2.tokenizer.json",
+      "source_url": "https://huggingface.co/openai-community/gpt2/resolve/607a30d783dfa663caf39e06633721c8d4cfcd7e/tokenizer.json",
+      "license": "MIT",
+      "size_bytes": 1355256,
+      "sha256": "8414cab924d8b9b33013f0d221c5862f365ee9be39c5c2bfae8a5a9e970478a6",
+      "vocab_size": 50257,
+      "model_type": "BPE (untagged; inferred from merges)",
+      "pre_tokenizer": "ByteLevel",
+      "normalizer": null,
+      "post_processor": "ByteLevel",
+      "decoder": "ByteLevel",
+      "roundtrip": "exact",
+      "roundtrip_note": "Byte-level BPE decodes back to the exact input bytes in both special-token modes.",
+      "oracle": "tiktoken `gpt2` encoding: literal mode uses disallowed_special=(), recognize mode uses allowed_special='all'. Independent of the Hugging Face tokenizers crate.",
+      "oracle_files": []
+    },
+    {
+      "name": "qwen2.5-0.5b",
+      "family": "byte-level BPE (Split regex pre-tokenizer, NFC normalizer)",
+      "repo_id": "Qwen/Qwen2.5-0.5B",
+      "revision": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+      "remote_file": "tokenizer.json",
+      "file": "qwen2.5-0.5b.tokenizer.json",
+      "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/tokenizer.json",
+      "license": "Apache-2.0",
+      "size_bytes": 7031645,
+      "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+      "vocab_size": 151665,
+      "model_type": "BPE",
+      "pre_tokenizer": "Sequence[Split, ByteLevel]",
+      "normalizer": "NFC",
+      "post_processor": "ByteLevel",
+      "decoder": "ByteLevel",
+      "roundtrip": "nfc_only",
+      "roundtrip_note": "The NFC normalizer rewrites non-NFC input before byte-level BPE, so only NFC-normalized text decodes back exactly.",
+      "oracle": "transformers fast tokenizer (Qwen2TokenizerFast via AutoTokenizer) loaded from the pinned tokenizer.json and tokenizer_config.json. NOT independent: it wraps the same Hugging Face tokenizers Rust backend family as the engine, so this golden checks cross-version agreement only.",
+      "oracle_files": [
+        {
+          "remote_file": "tokenizer_config.json",
+          "file": "oracle/qwen2.5-0.5b/tokenizer_config.json",
+          "size_bytes": 7228,
+          "sha256": "c91efca15ceff6e9ee9424db58a6f59cd41294e550a86cbd07e3c1fb500b34f9"
+        }
+      ]
+    },
+    {
+      "name": "bert-base-uncased",
+      "family": "WordPiece (BERT normalizer: clean text, Chinese chars, lowercase, strip accents)",
+      "repo_id": "google-bert/bert-base-uncased",
+      "revision": "86b5e0934494bd15c9632b12f734a8a67f723594",
+      "remote_file": "tokenizer.json",
+      "file": "bert-base-uncased.tokenizer.json",
+      "source_url": "https://huggingface.co/google-bert/bert-base-uncased/resolve/86b5e0934494bd15c9632b12f734a8a67f723594/tokenizer.json",
+      "license": "Apache-2.0",
+      "size_bytes": 466062,
+      "sha256": "ce64fce797c24f68df90b40a3f74f579b336a493db14bd583fd520ea0d8c9a98",
+      "vocab_size": 30522,
+      "model_type": "WordPiece (untagged; inferred from fields)",
+      "pre_tokenizer": "BertPreTokenizer",
+      "normalizer": "BertNormalizer",
+      "post_processor": "TemplateProcessing",
+      "decoder": "WordPiece",
+      "roundtrip": "none",
+      "roundtrip_note": "Lowercasing, accent stripping, and [UNK] replacement are lossy; no exact decode round trip exists.",
+      "oracle": "transformers slow BertTokenizer (pure-Python port of Google's original tokenization.py BasicTokenizer + WordpieceTokenizer) loaded from the pinned vocab.txt with do_lower_case=True. Independent of the Hugging Face tokenizers crate.",
+      "oracle_files": [
+        {
+          "remote_file": "vocab.txt",
+          "file": "oracle/bert-base-uncased/vocab.txt",
+          "size_bytes": 231508,
+          "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+        }
+      ]
+    },
+    {
+      "name": "xlm-roberta-base",
+      "family": "Unigram (precompiled charsmap normalizer, Metaspace pre-tokenizer)",
+      "repo_id": "FacebookAI/xlm-roberta-base",
+      "revision": "e73636d4f797dec63c3081bb6ed5c7b0bb3f2089",
+      "remote_file": "tokenizer.json",
+      "file": "xlm-roberta-base.tokenizer.json",
+      "source_url": "https://huggingface.co/FacebookAI/xlm-roberta-base/resolve/e73636d4f797dec63c3081bb6ed5c7b0bb3f2089/tokenizer.json",
+      "license": "MIT",
+      "size_bytes": 9096718,
+      "sha256": "a898ea75433890f6610f4e470b8ebeb0c21dce5c8dd61f892eb09eb5919d2e2c",
+      "vocab_size": 250002,
+      "model_type": "Unigram (untagged; inferred from scored vocab)",
+      "pre_tokenizer": "Sequence[WhitespaceSplit, Metaspace]",
+      "normalizer": "Precompiled",
+      "post_processor": "TemplateProcessing",
+      "decoder": "Metaspace",
+      "roundtrip": "none",
+      "roundtrip_note": "The charsmap normalizer and Metaspace whitespace handling are lossy; no exact decode round trip exists.",
+      "oracle": "Google sentencepiece with the original sentencepiece.bpe.model for literal mode (spm id k>=3 maps to k+1, spm <unk>=0 maps to 3, matching the fairseq offset); transformers slow XLMRobertaTokenizer (sentencepiece-backed) for recognize mode and add_special_tokens. Independent of the Hugging Face tokenizers crate.",
+      "oracle_files": [
+        {
+          "remote_file": "sentencepiece.bpe.model",
+          "file": "oracle/xlm-roberta-base/sentencepiece.bpe.model",
+          "size_bytes": 5069051,
+          "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"
+        }
+      ]
+    }
+  ]
+}

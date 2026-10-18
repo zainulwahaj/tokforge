@@ -1,0 +1,16 @@
+한국어 텍스트 토크나이저 테스트입니다. 안녕하세요, 세계! 반갑습니다.
+서울특별시 2026년 10월 18일 오후 7시 KTX 열차는 부산역에 도착했습니다.
+대한민국의 수도는 서울이며, 인구는 약 5천만 명입니다. 한글은 1443년에 창제되었습니다.
+Conjoining jamo (NFD): 한국어 자모
+Compatibility jamo: ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ ㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ ㄲㄸㅃㅆㅉ ㅐㅒㅔㅖㅘㅙㅚㅝㅞㅟㅢ
+Chat shorthand: ㅋㅋㅋㅋㅋ ㅎㅎㅎ ㅠㅠ ㅇㅇ ㄳ ㄱㅅ ㄴㄴ ㅊㅋ
+Halfwidth jamo: ﾡﾢﾣﾤﾥ ﾱﾲﾳ (U+FFA1..) and fullwidth mixed: ＨＡＮ한
+Archaic jamo: ᄼ ᄾ ᅀ ᅙ ᆞ ᆢ ㆁ ㆆ; Hangul letter araea: ᆞ
+Mixed script: 서울Seoul 東京도쿄 뉴욕New York 한자漢字 영어English 숫자123 기호!@# 이모지😀
+Long run without spaces: 가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오조초코토포호구누두루무부수우주추쿠투푸후
+Syllable block boundaries: 가각갂갃간갅갆갇갈갉갊갋갌갍갎갏감갑값갓갔강갖갗갘같갚갛 힣
+Particles and spacing: 나는 학교에 갔다. 그는 책을 읽었다. 우리가 밥을 먹는다.
+Numbers: 일 이 삼 사 오 육 칠 팔 구 십 백 천 만 억 조; 하나 둘 셋 넷 다섯
+Punctuation: 「인용」 『책 제목』 〈노래〉 《영화》 ~ … ‥ · ∼ ※
+Spaced-out: 토 크 나 이 저; ToKeNiZeR 토크나이저; TOKENIZER토크나이저
+Korean sentence ending styles: 합니다 해요 한다 함 해; 입니다 이에요 이다 임

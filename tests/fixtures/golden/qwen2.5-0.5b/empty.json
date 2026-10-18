@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "artifact": "qwen2.5-0.5b",
+  "artifact_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+  "corpus_file": "empty.txt",
+  "corpus_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "corpus_bytes": 0,
+  "text_is_nfc": true,
+  "generator": "tests/fixtures/golden/generate.py",
+  "python": "3.12.10",
+  "oracle": "transformers 4.57.6 Qwen2TokenizerFast (tokenizers 0.22.2 Rust backend, not independent)",
+  "cross_check": "tokenizers 0.22.2 (Python bindings of the HF Rust backend)",
+  "cases": [
+    {
+      "special_tokens": "literal",
+      "add_special_tokens": false,
+      "oracle": "transformers 4.57.6 Qwen2TokenizerFast (tokenizers 0.22.2 Rust backend, not independent)",
+      "ids": [],
+      "cross_check_matches": true
+    },
+    {
+      "special_tokens": "recognize",
+      "add_special_tokens": false,
+      "oracle": "transformers 4.57.6 Qwen2TokenizerFast (tokenizers 0.22.2 Rust backend, not independent)",
+      "ids": [],
+      "cross_check_matches": true
+    }
+  ]
+}

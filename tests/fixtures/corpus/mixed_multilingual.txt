@@ -1,0 +1,22 @@
+Project notes (2026-10-18): the fast-tokenizer engine must produce identical IDs to the reference oracles.
+اردو: ہم نے چار ماڈلز کا انتخاب کیا ہے، اور ہر ایک کے لیے گولڈن فائلیں تیار کی ہیں۔
+中文：我们选择了四个模型，并为每个模型生成了黄金文件。性能很重要，但正确性更重要。
+日本語：性能は重要ですが、正確さの方がもっと重要です。テストは毎回実行してください。
+한국어: 성능도 중요하지만 정확성이 더 중요합니다. 테스트를 매번 실행하세요.
+العربية: الأداء مهم، لكن الصحة أهم. قم بتشغيل الاختبارات في كل مرة.
+हिन्दी: प्रदर्शन महत्वपूर्ण है, लेकिन शुद्धता अधिक महत्वपूर्ण है। हर बार परीक्षण चलाएँ।
+Русский: Привет, мир! Это тест токенизатора. Производительность важна, но корректность важнее.
+Ελληνικά: Γειά σου Κόσμε! Η απόδοση είναι σημαντική, αλλά η ορθότητα είναι πιο σημαντική.
+Türkçe: İstanbul'da güneşli bir gün. Diyarbakır'dan Iğdır'a kadar. ILIK ılık IŞIK ışık.
+Deutsch: Straße, Größe, übermäßig, Äpfel, Öl, Übung. Die Donaudampfschifffahrtsgesellschaft.
+Français: Où êtes-vous allé ? Ça va très bien, merci ! L'été, l'hôtel, cœur, œuvre, naïve, Noël.
+Español: ¿Qué tal? ¡Hola! El niño comió jalapeños. Año, señor, mañana.
+Polski: Zażółć gęślą jaźń. Pchnąć w tę łódź jeża lub ośm skrzyń fig.
+Tiếng Việt: Tôi yêu Việt Nam. Phở bò, bánh mì, cà phê sữa đá. Hà Nội và Thành phố Hồ Chí Minh.
+Čeština: Příliš žluťoučký kůň úpěl ďábelské ódy. Magyar: Árvíztűrő tükörfúrógép.
+Suomi: Hyvää päivää! Kiitos paljon. Íslenska: Þetta er íslenska. Ævintýri. Norsk: Blåbærsyltetøy.
+Emoji and code: deploy 🚀 then `cargo test --all-targets --locked` ✅ and open https://github.com/zainulwahaj/fast-tokenizer 🦀
+Numbers across scripts: 123 ١٢٣ १२३ ১২৩ ๑๒๓ １２３ ⑴⑵⑶ Ⅰ Ⅱ Ⅲ 一二三 ١٬٢٣٤٫٥٦ 1,234.56 1.234,56
+Quotes across locales: "English" “curly” ‘single’ «français» „deutsch“ »schweizerisch« 「日本語」 『強調』 ‹angle› ‟odd‟
+Mixed in one word: Rust언어 日本go عربيEnglish हिन्दीText emoji😀word 漢字kanji カナkana
+The end. 끝. 終わり. النهاية. अंत. Конец. Τέλος. Fin. Ende. Koniec. Kết thúc. 🏁

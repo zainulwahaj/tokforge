@@ -1,0 +1,16 @@
+Basic: 😀 😃 😄 😁 🤣 😂 🙂 🙃 😉 😊 😍 🥰 😘 🤔 🤨 😐 😑 😶 🙄 😏
+Skin tones: 👍 👍🏻 👍🏼 👍🏽 👍🏾 👍🏿 👋🏽 🙏🏿 ✋🏻 🤝🏾 💪🏼 👶🏽 🧑🏿 👩🏻 👨🏾
+ZWJ families: 👨‍👩‍👧‍👦 👩‍👩‍👦 👨‍👨‍👧‍👧 👩‍👧 👨‍👦‍👦 👩‍❤️‍👨 👩‍❤️‍💋‍👩 💑 💏
+ZWJ professions: 👩‍💻 👨‍🚀 🧑‍🔬 👩🏾‍🏫 🧑🏻‍🤝‍🧑🏿 👨🏽‍⚕️ 👩🏼‍🚒 🧑‍🎨 👨‍🍳 👩‍🔧
+Flags: 🇵🇰 🇺🇸 🇯🇵 🇩🇪 🇬🇧 🇫🇷 🇮🇳 🇨🇳 🇧🇷 🇺🇳 🇪🇺 🏴󠁧󠁢󠁥󠁮󠁧󠁿 🏴󠁧󠁢󠁳󠁣󠁴󠁿 🏳️‍🌈 🏳️‍⚧️ 🏁 🚩 🏴 🏳️
+Keycaps: 0️⃣ 1️⃣ 2️⃣ 3️⃣ 9️⃣ #️⃣ *️⃣ 🔟
+Variation selectors: ❤ ❤️ ☺ ☺️ ✈ ✈️ ™ ™️ ☀ ☀️ ⚠ ⚠️ ✔ ✔️ ❣ ❣️ ⏱ ⏱️ ©️ ®️
+Hair and gender: 👩‍🦰 👨‍🦲 👩‍🦳 🧑‍🦱 🏋️‍♀️ 🚴‍♂️ 🧜‍♀️ 🧙‍♂️ 🙋‍♀️ 🙋‍♂️ 🤷‍♀️ 🤦‍♂️
+Animals and objects: 🦀 🐍 🦊 🐙 🦄 🌈 🌙 ⭐ 🔥 💧 🍕 🍔 🎂 ☕ 🚀 🛸 🏠 💻 📱 ⌚ 🔑 🎵
+Inline: I ❤️ Rust 🦀! Deploy 🚀 at 5pm 🕔 → 🎉🎉🎉 Great job 👏🏽👏🏽 100 💯 ok 👌 yes ✅ no ❌
+Partial sequences: 🇦 (lone regional indicator) 🏽 (lone modifier) a‍b (lone ZWJ between letters) ️ (lone VS16) 👨‍ (ZWJ trailing)
+Emoji 15/16 (newer tables): 🫠 🫨 🩷 🪿 🫎 🫩 🫆 🪾 🫟 🪉 🫜
+Repeated: 😂😂😂😂😂😂😂😂😂😂 🔥🔥🔥 ❤️❤️❤️ 👍🏿👍🏿👍🏿 🏴󠁧󠁢󠁥󠁮󠁧󠁿🏴󠁧󠁢󠁥󠁮󠁧󠁿
+Emoticons and kaomoji: :) :-) :( ;-) :D XD :P <3 </3 ¯\_(ツ)_/¯ (╯°□°）╯︵ ┻━┻ ( ͡° ͜ʖ ͡°) ಥ_ಥ ʘ‿ʘ (^_^) (>_<) ٩(◕‿◕｡)۶
+Symbols vs emoji presentation: ♥ ♥️ ♠ ♠️ ✂ ✂️ ☎ ☎️ ⌨ ⌨️ 🅰 🅰️ Ⓜ Ⓜ️ ㊗ ㊗️ ㊙ ㊙️ 🈷 🈷️
+Direction and ZWJ chain: 🏃‍➡️ 🏃🏽‍♀️‍➡️ 🧑‍🧑‍🧒‍🧒 🐦‍🔥 🍋‍🟩 🍄‍🟫 ⛓️‍💥
