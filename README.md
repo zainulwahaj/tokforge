@@ -4,9 +4,66 @@ Rust tokenization and document preparation project.
 
 ## Current status
 
-Repository scaffold only. The CLI currently supports `tokenizer info` to verify
-the build environment. Counting, encoding, decoding, batching, the HTTP API,
-and token-aware chunking are the next implementation steps.
+The shared engine and CLI support `info`, `count`, `encode`, `decode`, `truncate`,
+and `chunk`, using a local Hugging Face `tokenizer.json` artifact. All commands
+emit JSON. The HTTP API, streaming JSONL processing, and performance benchmarks
+are next.
+
+## Try the CLI
+
+The tiny WordPiece fixture is included for testing; use your model's exported
+tokenizer for real counts.
+
+```powershell
+cargo run -- info
+cargo run -- count --tokenizer tests/fixtures/wordpiece.json --text "hello world!"
+cargo run -- encode --tokenizer tests/fixtures/wordpiece.json --text "hello world!"
+cargo run -- decode --tokenizer tests/fixtures/wordpiece.json --text '[4,5,6]'
+cargo run -- truncate --tokenizer tests/fixtures/wordpiece.json --text "hello world!" --max-tokens 2
+cargo run -- chunk --tokenizer tests/fixtures/wordpiece.json --text "hello world!" --max-tokens 2
+```
+
+For your own tokenizer, replace the fixture path with `models/tokenizer.json`.
+Use `--file document.txt` for UTF-8 files or omit both `--text` and `--file` to
+read stdin. Decode accepts a JSON array of unsigned token IDs through the same
+input options. Whitespace and newlines in file/stdin input are preserved;
+shell pipelines may add a newline or change encoding, so prefer files when
+exact source bytes matter. Invalid input exits unsuccessfully with an error on
+stderr.
+
+## Tokenization contract
+
+- Every model-backed response includes the SHA-256 of the original artifact
+  bytes and its vocabulary size. Encoding responses also report the effective
+  special-token options. Record the source model and revision alongside your
+  artifact; the hash does not identify its upstream model name.
+- Saved padding and truncation are disabled so the entire input is counted.
+  BPE dropout is rejected to keep results reproducible.
+- Special-token spellings in text are treated literally by default. Use
+  `--special-tokens recognize` to enable the artifact's registered special-token
+  matching. Separately, `--add-special-tokens` enables post-processing such as
+  BOS/EOS insertion. These extra tokens count toward the budget. Literal mode
+  disables special matching; the underlying model can still emit a special ID
+  if that spelling exists in its normal vocabulary.
+- Decode preserves special tokens unless `--skip-special-tokens` is set and
+  rejects unknown IDs. Decoding follows the artifact's normalization/decoder;
+  arbitrary models do not guarantee an exact text round trip.
+- Encode offsets are UTF-8 byte ranges from the tokenizer. Synthetic tokens may
+  have `[0, 0]` offsets, and byte-level token offsets may overlap or cover only
+  part of a Unicode scalar; do not slice Rust strings blindly at those offsets.
+- Truncate returns an original source prefix. Chunk returns contiguous,
+  nonoverlapping slices covering the entire source, including whitespace.
+  Each output is independently re-encoded and verified against `--max-tokens`.
+  Source ranges use an inclusive `start_byte` and exclusive `end_byte`.
+  Cuts preserve Unicode scalars, but may split words or grapheme clusters.
+- Prefix search uses binary probing with an exhaustive fallback when no
+  nonempty candidate fits. Token counts can decrease as text grows, so this
+  does not promise the longest possible prefix or fullest possible chunks.
+  This correctness-first implementation repeatedly encodes prefixes and is
+  not yet optimized for large documents; fallback can be quadratic.
+- Zero budgets are accepted: truncate may return empty text, while chunk
+  fails if it cannot make progress. Empty source yields zero chunks. If the
+  empty prefix's added special tokens exceed the budget, truncate fails.
 
 ## Windows prerequisites
 
@@ -15,9 +72,9 @@ and token-aware chunking are the next implementation steps.
 - Stable Rust, Cargo, rustfmt, and Clippy (installed using rustup)
 - Network access to Rust distribution servers, crates.io, and GitHub
 
-On this machine, Git, GitHub CLI, Visual C++ tools, and the Windows SDK were
-detected. Rust installation and GitHub repository creation could not be completed
-from the restricted workspace because outbound connections were denied.
+On this machine, Rust and its formatting/lint tools are now installed alongside
+Git, GitHub CLI, Visual C++ tools, and the Windows SDK. Installation and GitHub
+access require running outside the restricted workspace environment.
 
 ## Complete setup
 
@@ -53,11 +110,14 @@ Use `C:\Users\HP\Desktop\fast-tokenizer` as the workspace folder for this
 project. Changing a command's working directory does not change the app's
 selected workspace or its permission scope.
 
-## Intended implementation
+## Next implementation steps
 
-1. Shared tokenizer engine with explicit special-token behavior and artifact identity.
-2. CLI count, encode, decode, truncate, and chunk commands.
-3. HTTP endpoints backed by a bounded CPU pool.
-4. Streaming JSONL processing with bounded queues and cancellation.
-5. Unicode-safe chunks with verified token budgets and original source offsets.
-6. Correctness fixtures and reproducible throughput/latency benchmarks.
+1. HTTP endpoints backed by a bounded CPU pool.
+2. Streaming JSONL processing with bounded queues and cancellation.
+3. Optimize prefix search and add reproducible throughput/latency benchmarks.
+4. Expand fixtures to real model artifacts and cross-implementation comparisons.
+
+The current tests cover known IDs and byte offsets, saved padding/truncation
+overrides, special tokens, malformed input, Unicode byte-level round trips,
+source reconstruction, nonmonotonic token counts, and CLI file/stdin handling.
+The tokenizer integration uses the [tokenizers Rust API](https://docs.rs/tokenizers/0.22.2/tokenizers/tokenizer/struct.TokenizerImpl.html).
