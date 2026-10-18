@@ -208,6 +208,8 @@ fn core_flag_is_reported_and_backend_can_be_forced() {
     let auto = json(run("info", &[], None));
     // The synthetic WordPiece fixture is never served by the custom core.
     assert_eq!(auto["artifact"]["core"], "backend");
+    // Verify stays the default until the differential soak passes clean.
+    assert_eq!(auto["options"]["core"], "verify");
     let forced = json(run(
         "count",
         &["--core", "backend", "--text", "hello world"],

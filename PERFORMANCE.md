@@ -272,4 +272,7 @@ Compare worker/window settings and batch sizes from measurements before adding
 SIMD or unsafe code. The custom core could extend to the Llama 3 regex family
 and to `ignore_merges` artifacts under the same differential gate. Keep output
 correctness checks (`tests/bytelevel.rs`, `tests/reference.rs`) alongside
-performance runs; `--core verify` double-encodes in production when needed.
+performance runs. `--core verify` is the default until the differential soak
+passes clean, so production numbers for qualifying artifacts currently include
+one backend encode per request on top of the core; the `core_*` workloads above
+show the core alone, and `--core auto` opts into that behaviour today.

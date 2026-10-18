@@ -565,3 +565,12 @@ mod literal_special_pieces {
         assert_eq!(splits(&WhitespaceSplit, "[CLS]"), ["[CLS]"]);
     }
 }
+
+#[test]
+fn verify_is_the_default_core_mode_until_the_soak_passes() {
+    // User decision of 2026-10-18: double-encode against the backend by default
+    // until the differential soak is clean, then flip this to Auto.
+    use fast_tokenizer::CoreMode;
+    assert_eq!(EncodeOptions::default().core, CoreMode::Verify);
+    assert_eq!(engine(false).options().core, CoreMode::Verify);
+}

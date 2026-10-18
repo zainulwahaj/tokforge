@@ -5,6 +5,9 @@
 //! carries per-iteration p50/p95/p99 and heap allocation counts; `--output <path>` writes JSON.
 //! `--http-load <concurrency>` also serves the API on a loopback port and measures end-to-end
 //! request latency for `POST /v1/count` from that many keep-alive clients (`--requests` total).
+//! `--core auto|backend|verify` picks the engine core for the unprefixed workloads and the load
+//! test. The default here is `auto`, so reports stay comparable while `verify` is the engine's
+//! default; `verify` rows would otherwise include a backend re-encode on top of the core.
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     future::IntoFuture,
@@ -22,7 +25,7 @@ use fast_tokenizer::{
     batch::{self, BatchConfig},
     bytelevel::{ByteLevelBpe, Output},
     work::{Cancellation, CpuPool},
-    EncodeOptions, Engine,
+    CoreMode, EncodeOptions, Engine,
 };
 use serde_json::{json, Value};
 use tokenizers::{
@@ -72,6 +75,9 @@ struct Args {
     http_load: Option<String>,
     /// Total requests for the load test.
     requests: Option<String>,
+    /// Engine core for the unprefixed workloads and the load test: auto (default), backend,
+    /// or verify. Not the engine's default on purpose: see the module comment.
+    core: Option<String>,
 }
 
 fn parse_args() -> anyhow::Result<Args> {
@@ -81,6 +87,7 @@ fn parse_args() -> anyhow::Result<Args> {
         corpus: None,
         http_load: None,
         requests: None,
+        core: None,
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -90,9 +97,10 @@ fn parse_args() -> anyhow::Result<Args> {
             "--corpus" => &mut args.corpus,
             "--http-load" => &mut args.http_load,
             "--requests" => &mut args.requests,
+            "--core" => &mut args.core,
             "--bench" => continue, // appended by `cargo bench`
             other => anyhow::bail!(
-                "unknown argument {other}; expected --output, --tokenizer, --corpus, --http-load, --requests"
+                "unknown argument {other}; expected --output, --tokenizer, --corpus, --http-load, --requests, --core"
             ),
         };
         *slot = Some(
@@ -110,11 +118,24 @@ fn artifact_bytes(path: Option<&str>) -> anyhow::Result<Vec<u8>> {
     })
 }
 
-fn engine(path: Option<&str>) -> anyhow::Result<Engine> {
-    Ok(Engine::from_bytes(
-        &artifact_bytes(path)?,
-        EncodeOptions::default(),
-    )?)
+fn core_mode(flag: Option<&str>) -> anyhow::Result<CoreMode> {
+    Ok(match flag.unwrap_or("auto") {
+        "auto" => CoreMode::Auto,
+        "backend" => CoreMode::Backend,
+        "verify" => CoreMode::Verify,
+        other => anyhow::bail!("--core must be auto, backend, or verify, not {other}"),
+    })
+}
+
+fn options(core: CoreMode) -> EncodeOptions {
+    EncodeOptions {
+        core,
+        ..EncodeOptions::default()
+    }
+}
+
+fn engine(path: Option<&str>, core: CoreMode) -> anyhow::Result<Engine> {
+    Ok(Engine::from_bytes(&artifact_bytes(path)?, options(core))?)
 }
 
 /// 2,000 encode records. The synthetic record stays byte-identical to earlier reports; a corpus
@@ -261,8 +282,9 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     let args = parse_args()?;
+    let core = core_mode(args.core.as_deref())?;
     let json = artifact_bytes(args.tokenizer.as_deref())?;
-    let engine = Engine::from_bytes(&json, EncodeOptions::default())?;
+    let engine = Engine::from_bytes(&json, options(core))?;
     let corpus_text = match &args.corpus {
         Some(path) => Some(std::fs::read_to_string(path)?),
         None => None,
@@ -293,7 +315,7 @@ fn main() -> anyhow::Result<()> {
         // A fresh run needs a fresh cancellation scope; pool startup and model loading are included.
         let cancel = Cancellation::default();
         let pool = CpuPool::new(
-            self::engine(args.tokenizer.as_deref()).unwrap(),
+            self::engine(args.tokenizer.as_deref(), core).unwrap(),
             4,
             16,
             cancel.clone(),
@@ -323,12 +345,12 @@ fn main() -> anyhow::Result<()> {
             concurrency > 0 && requests >= concurrency,
             "bad load parameters"
         );
-        results.push(http_load(&json, &text, concurrency, requests)?);
+        results.push(http_load(&json, &text, concurrency, requests, core)?);
     }
     let mut output = json!({"fixture_sha256": engine.artifact().sha256,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH,
         "cpu": std::env::var("PROCESSOR_IDENTIFIER").unwrap_or_default(),
-        "profile": "release", "results": results});
+        "profile": "release", "core_mode": core, "results": results});
     // Only real-artifact runs add these keys, so default reports keep their established shape.
     if args.tokenizer.is_some() || args.corpus.is_some() {
         output["tokenizer"] = json!(args
@@ -357,6 +379,7 @@ fn http_load(
     text: &str,
     concurrency: usize,
     requests: usize,
+    core: CoreMode,
 ) -> anyhow::Result<Value> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -364,7 +387,7 @@ fn http_load(
     runtime.block_on(async {
         let cancel = Cancellation::default();
         let pool = CpuPool::new(
-            Engine::from_bytes(json, EncodeOptions::default())?,
+            Engine::from_bytes(json, options(core))?,
             4,
             16,
             cancel.clone(),
