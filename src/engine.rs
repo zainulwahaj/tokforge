@@ -18,6 +18,8 @@ pub enum Error {
     BudgetTooSmall { offset: usize },
     #[error("the empty input's special tokens exceed the token budget")]
     EmptyBudget,
+    #[error("operation cancelled")]
+    Cancelled,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize)]
@@ -139,7 +141,16 @@ impl Engine {
     /// Return a verified source prefix. It need not be the longest fitting prefix:
     /// token counts are not monotonic as text grows.
     pub fn truncate(&self, text: &str, max_tokens: usize) -> Result<Chunk, Error> {
-        let (end, count) = self.fitting_prefix(text, max_tokens)?;
+        self.truncate_checked(text, max_tokens, &|| Ok(()))
+    }
+
+    pub(crate) fn truncate_checked(
+        &self,
+        text: &str,
+        max_tokens: usize,
+        check: &impl Fn() -> Result<(), Error>,
+    ) -> Result<Chunk, Error> {
+        let (end, count) = self.fitting_prefix(text, max_tokens, check)?;
         Ok(Chunk {
             text: text[..end].to_owned(),
             start_byte: 0,
@@ -151,10 +162,20 @@ impl Engine {
     /// Partition all source bytes into nonoverlapping, independently encoded chunks.
     /// Boundaries are Unicode scalar boundaries, not necessarily grapheme boundaries.
     pub fn chunk(&self, text: &str, max_tokens: usize) -> Result<Vec<Chunk>, Error> {
+        self.chunk_checked(text, max_tokens, &|| Ok(()))
+    }
+
+    pub(crate) fn chunk_checked(
+        &self,
+        text: &str,
+        max_tokens: usize,
+        check: &impl Fn() -> Result<(), Error>,
+    ) -> Result<Vec<Chunk>, Error> {
         let mut chunks = Vec::new();
         let mut start = 0;
         while start < text.len() {
-            let (length, count) = self.fitting_prefix(&text[start..], max_tokens)?;
+            check()?;
+            let (length, count) = self.fitting_prefix(&text[start..], max_tokens, check)?;
             if length == 0 {
                 return Err(Error::BudgetTooSmall { offset: start });
             }
@@ -170,7 +191,13 @@ impl Engine {
         Ok(chunks)
     }
 
-    fn fitting_prefix(&self, text: &str, budget: usize) -> Result<(usize, usize), Error> {
+    fn fitting_prefix(
+        &self,
+        text: &str,
+        budget: usize,
+        check: &impl Fn() -> Result<(), Error>,
+    ) -> Result<(usize, usize), Error> {
+        check()?;
         let full_count = self.count(text)?;
         if full_count <= budget {
             return Ok((text.len(), full_count));
@@ -186,6 +213,7 @@ impl Engine {
         // Every accepted candidate is encoded on its own; monotonic counts are
         // not required for safety. Binary probing need not find a maximal prefix.
         while low < high {
+            check()?;
             let middle = low + (high - low) / 2;
             let end = boundaries[middle];
             let count = self.count(&text[..end])?;
@@ -202,6 +230,7 @@ impl Engine {
         // Merges/normalization can make a longer prefix fit when a shorter one
         // does not. Fallback prevents incorrectly declaring no progress possible.
         for &end in boundaries.iter().skip(1).rev().skip(1) {
+            check()?;
             let count = self.count(&text[..end])?;
             if count <= budget {
                 return Ok((end, count));
@@ -217,4 +246,36 @@ impl Engine {
 
 fn tokenizer_error(error: tokenizers::Error) -> Error {
     Error::Tokenizer(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn prefix_search_and_chunking_honor_cooperative_cancellation() {
+        let engine = Engine::from_bytes(
+            include_bytes!("../tests/fixtures/wordpiece.json"),
+            EncodeOptions::default(),
+        )
+        .unwrap();
+        let text = "hello world! ".repeat(100);
+        for chunk in [false, true] {
+            let checks = AtomicUsize::new(0);
+            let check = || {
+                if checks.fetch_add(1, Ordering::Relaxed) >= 2 {
+                    Err(Error::Cancelled)
+                } else {
+                    Ok(())
+                }
+            };
+            let result = if chunk {
+                engine.chunk_checked(&text, 1, &check).map(|_| ())
+            } else {
+                engine.truncate_checked(&text, 1, &check).map(|_| ())
+            };
+            assert!(matches!(result, Err(Error::Cancelled)));
+        }
+    }
 }

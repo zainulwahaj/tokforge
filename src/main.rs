@@ -1,11 +1,18 @@
 use std::{
     fs,
     io::{self, Read, Write},
+    net::SocketAddr,
     path::PathBuf,
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use fast_tokenizer::{
+    api::{self, ApiConfig},
+    batch::{self, BatchConfig},
+    work::{Cancellation, CpuPool},
+};
 use fast_tokenizer::{EncodeOptions, Engine, SpecialTokens};
 use serde_json::{json, Value};
 
@@ -41,6 +48,68 @@ enum Command {
     Truncate(BudgetCommand),
     /// Split all source text into chunks with verified token budgets.
     Chunk(BudgetCommand),
+    /// Serve the HTTP API using a bounded CPU pool.
+    Serve(ServeCommand),
+    /// Process operation records as ordered JSONL from a file or stdin.
+    Jsonl(JsonlCommand),
+}
+
+#[derive(Args)]
+struct PoolArgs {
+    #[command(flatten)]
+    model: Model,
+    /// Number of dedicated CPU worker threads.
+    #[arg(long, default_value_t = 4, value_parser = positive)]
+    workers: usize,
+    /// Additional admitted jobs beyond the worker count (zero is allowed).
+    #[arg(long, default_value_t = 16)]
+    queue_capacity: usize,
+}
+
+impl PoolArgs {
+    fn load(&self, cancel: Cancellation) -> Result<CpuPool> {
+        CpuPool::new(
+            self.model.load()?,
+            self.workers,
+            self.queue_capacity,
+            cancel,
+        )
+    }
+}
+
+#[derive(Args)]
+struct ServeCommand {
+    #[command(flatten)]
+    pool: PoolArgs,
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    bind: SocketAddr,
+    #[arg(long, default_value_t = 1_048_576, value_parser = positive)]
+    max_body_bytes: usize,
+    #[arg(long, default_value_t = 30, value_parser = positive)]
+    timeout_seconds: usize,
+}
+
+#[derive(Args)]
+struct JsonlCommand {
+    #[command(flatten)]
+    pool: PoolArgs,
+    /// Read JSONL from a UTF-8 file; omit for stdin.
+    #[arg(long)]
+    file: Option<PathBuf>,
+    /// Create a new output file; omit for stdout. Existing files are rejected.
+    #[arg(long)]
+    output: Option<PathBuf>,
+    /// Maximum bytes in one record, excluding the newline.
+    #[arg(long, default_value_t = 1_048_576, value_parser = positive)]
+    max_line_bytes: usize,
+}
+
+fn positive(value: &str) -> std::result::Result<usize, String> {
+    value
+        .parse::<usize>()
+        .ok()
+        .filter(|n| *n > 0)
+        .ok_or_else(|| "expected a positive integer".to_owned())
 }
 
 #[derive(Args)]
@@ -123,7 +192,7 @@ fn run(cli: Cli) -> Result<Value> {
         Command::Info { tokenizer } => {
             let mut info = json!({
                 "name": "fast-tokenizer", "version": fast_tokenizer::VERSION,
-                "status": "cli", "commands": ["info", "count", "encode", "decode", "truncate", "chunk"],
+                "status": "ready", "commands": ["info", "count", "encode", "decode", "truncate", "chunk", "serve", "jsonl"],
             });
             if let Some(path) = tokenizer {
                 let engine = Engine::from_file(&path, EncodeOptions::default())
@@ -179,11 +248,105 @@ fn run(cli: Cli) -> Result<Value> {
                 "max_tokens": args.max_tokens, "chunks": engine.chunk(&text, args.max_tokens)?}),
             )
         }
+        Command::Serve(_) | Command::Jsonl(_) => {
+            unreachable!("async commands are dispatched by main")
+        }
     }
 }
 
+async fn serve(args: ServeCommand) -> Result<()> {
+    let cancel = Cancellation::default();
+    let _guard = cancel.guard();
+    let pool = args.pool.load(cancel.clone())?;
+    let config = ApiConfig {
+        max_body_bytes: args.max_body_bytes,
+        request_timeout: Duration::from_secs(args.timeout_seconds as u64),
+    };
+    let listener = tokio::net::TcpListener::bind(args.bind).await?;
+    eprintln!("Listening on http://{}", listener.local_addr()?);
+    axum::serve(listener, api::router(pool, config))
+        .with_graceful_shutdown(async move {
+            if let Err(error) = tokio::signal::ctrl_c().await {
+                eprintln!("Could not listen for Ctrl+C: {error}");
+            }
+            cancel.cancel();
+        })
+        .await?;
+    Ok(())
+}
+
+async fn jsonl(args: JsonlCommand) -> Result<()> {
+    let cancel = Cancellation::default();
+    let _guard = cancel.guard();
+    let pool = args.pool.load(cancel.clone())?;
+    let reader: Box<dyn tokio::io::AsyncBufRead + Unpin + Send> = if let Some(path) = args.file {
+        Box::new(tokio::io::BufReader::new(
+            tokio::fs::File::open(&path)
+                .await
+                .with_context(|| format!("opening {}", path.display()))?,
+        ))
+    } else {
+        Box::new(tokio::io::BufReader::new(tokio::io::stdin()))
+    };
+    let writer: Box<dyn tokio::io::AsyncWrite + Unpin + Send> = if let Some(path) = args.output {
+        Box::new(tokio::io::BufWriter::new(
+            tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .await
+                .with_context(|| format!("creating new output {}", path.display()))?,
+        ))
+    } else {
+        Box::new(tokio::io::BufWriter::new(tokio::io::stdout()))
+    };
+    let signal_cancel = cancel.clone();
+    let signal = tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal_cancel.cancel();
+        }
+    });
+    let result = batch::process(
+        reader,
+        writer,
+        pool,
+        BatchConfig {
+            max_line_bytes: args.max_line_bytes,
+        },
+        cancel,
+    )
+    .await;
+    signal.abort();
+    let summary = result?;
+    eprintln!(
+        "Processed {} records; {} errors",
+        summary.records, summary.errors
+    );
+    anyhow::ensure!(
+        summary.errors == 0,
+        "JSONL contains failed records; see output for details"
+    );
+    Ok(())
+}
+
+fn run_async(future: impl std::future::Future<Output = Result<()>>) -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let result = runtime.block_on(future);
+    // Tokio stdin uses a blocking read that cannot be interrupted. Do not wait
+    // for that read when a cancelled JSONL pipeline exits.
+    runtime.shutdown_background();
+    result
+}
+
 fn main() -> Result<()> {
-    let output = run(Cli::parse())?;
+    let cli = Cli::parse();
+    let output = match cli.command {
+        Command::Serve(args) => return run_async(serve(args)),
+        Command::Jsonl(args) => return run_async(jsonl(args)),
+        command => run(Cli { command })?,
+    };
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     serde_json::to_writer_pretty(&mut stdout, &output)?;
     writeln!(stdout)?;

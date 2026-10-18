@@ -36,6 +36,88 @@ fn json(output: Output) -> Value {
 }
 
 #[test]
+fn jsonl_streams_results_and_reports_partial_record_failures() {
+    let output = run(
+        "jsonl",
+        &["--workers", "2", "--queue-capacity", "1"],
+        Some("{\"op\":\"count\",\"text\":\"hello world!\"}\n{\"op\":\"decode\",\"ids\":[4,5,6]}\n"),
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rows: Vec<Value> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["result"]["count"], 3);
+    assert_eq!(rows[1]["result"]["text"], "hello world!");
+    let output = run(
+        "jsonl",
+        &[],
+        Some("bad json\n{\"op\":\"count\",\"text\":\"hello\"}"),
+    );
+    assert!(!output.status.success());
+    let rows: Vec<Value> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows[0]["error"]["code"], "invalid_request");
+    assert_eq!(rows[1]["result"]["count"], 1);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("2 records; 1 errors"));
+}
+
+#[test]
+fn jsonl_file_output_never_overwrites_existing_files_or_input() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("input.jsonl");
+    let destination = directory.path().join("output.jsonl");
+    let input = "{\"op\":\"count\",\"text\":\"hello\"}\n";
+    std::fs::write(&source, input).unwrap();
+    let output = run(
+        "jsonl",
+        &[
+            "--file",
+            source.to_str().unwrap(),
+            "--output",
+            destination.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout.is_empty());
+    let saved = std::fs::read(&destination).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&saved).unwrap()["result"]["count"],
+        1
+    );
+    for existing in [&source, &destination] {
+        assert!(!run(
+            "jsonl",
+            &[
+                "--file",
+                source.to_str().unwrap(),
+                "--output",
+                existing.to_str().unwrap()
+            ],
+            None
+        )
+        .status
+        .success());
+    }
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), input);
+    assert_eq!(std::fs::read(&destination).unwrap(), saved);
+}
+
+#[test]
 fn count_encode_decode_and_info() {
     assert_eq!(
         json(run("count", &["--text", "hello world!"], None))["count"],
