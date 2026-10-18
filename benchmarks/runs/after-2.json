@@ -1,0 +1,49 @@
+{
+  "arch": "x86_64",
+  "cpu": "Intel64 Family 6 Model 158 Stepping 9, GenuineIntel",
+  "fixture_sha256": "3629c6197797601bfd06f03d9546d17446d139c24ee094e2fce3a76ac3786a6b",
+  "os": "windows",
+  "profile": "release",
+  "results": [
+    {
+      "input_bytes": 33800,
+      "iterations": 26,
+      "mib_per_second": 2.735833654355349,
+      "ms_per_iteration": 11.78221923076923,
+      "name": "count",
+      "seconds": 0.3063377
+    },
+    {
+      "input_bytes": 33800,
+      "iterations": 23,
+      "mib_per_second": 2.463716224052142,
+      "ms_per_iteration": 13.083565217391305,
+      "name": "encode",
+      "seconds": 0.300922
+    },
+    {
+      "input_bytes": 33800,
+      "iterations": 24,
+      "mib_per_second": 2.5399352999209084,
+      "ms_per_iteration": 12.690949999999999,
+      "name": "truncate_128",
+      "seconds": 0.3045828
+    },
+    {
+      "input_bytes": 33800,
+      "iterations": 4,
+      "mib_per_second": 0.38734278285796986,
+      "ms_per_iteration": 83.218775,
+      "name": "chunk_128",
+      "seconds": 0.3328751
+    },
+    {
+      "input_bytes": 102000,
+      "iterations": 18,
+      "mib_per_second": 5.6026902859024,
+      "ms_per_iteration": 17.362155555555557,
+      "name": "jsonl_encode_2000",
+      "seconds": 0.3125188
+    }
+  ]
+}

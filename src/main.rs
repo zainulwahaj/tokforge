@@ -11,10 +11,10 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use fast_tokenizer::{
     api::{self, ApiConfig},
     batch::{self, BatchConfig},
-    work::{Cancellation, CpuPool},
+    work::{execute, Cancellation, CpuPool, Operation},
 };
 use fast_tokenizer::{EncodeOptions, Engine, SpecialTokens};
-use serde_json::{json, Value};
+use serde_json::json;
 
 #[derive(Parser)]
 #[command(name = "tokenizer", version, about = "Rust tokenization engine")]
@@ -187,7 +187,7 @@ impl Input {
     }
 }
 
-fn run(cli: Cli) -> Result<Value> {
+fn run(cli: Cli) -> Result<Vec<u8>> {
     match cli.command {
         Command::Info { tokenizer } => {
             let mut info = json!({
@@ -200,21 +200,25 @@ fn run(cli: Cli) -> Result<Value> {
                 info["artifact"] = json!(engine.artifact());
                 info["options"] = json!(engine.options());
             }
-            Ok(info)
+            Ok(serde_json::to_vec_pretty(&info)?)
         }
         Command::Count(args) => {
             let engine = args.model.load()?;
-            Ok(
-                json!({"artifact": engine.artifact(), "options": engine.options(),
-                "count": engine.count(&args.input.read()?)?}),
-            )
+            Ok(execute(
+                &engine,
+                Operation::Count {
+                    text: args.input.read()?,
+                },
+            )?)
         }
         Command::Encode(args) => {
             let engine = args.model.load()?;
-            Ok(
-                json!({"artifact": engine.artifact(), "options": engine.options(),
-                "encoding": engine.encode(&args.input.read()?)?}),
-            )
+            Ok(execute(
+                &engine,
+                Operation::Encode {
+                    text: args.input.read()?,
+                },
+            )?)
         }
         Command::Decode {
             tokenizer,
@@ -225,28 +229,33 @@ fn run(cli: Cli) -> Result<Value> {
                 .with_context(|| format!("loading {}", tokenizer.display()))?;
             let ids: Vec<u32> = serde_json::from_str(&input.read()?)
                 .context("decode input must be a JSON array of unsigned 32-bit token IDs")?;
-            Ok(
-                json!({"artifact": engine.artifact(), "skip_special_tokens": skip_special_tokens,
-                "text": engine.decode(&ids, skip_special_tokens)?}),
-            )
+            Ok(execute(
+                &engine,
+                Operation::Decode {
+                    ids,
+                    skip_special_tokens,
+                },
+            )?)
         }
         Command::Truncate(args) => {
             let engine = args.text.model.load()?;
-            let text = args.text.input.read()?;
-            let result = engine.truncate(&text, args.max_tokens)?;
-            Ok(
-                json!({"artifact": engine.artifact(), "options": engine.options(),
-                "max_tokens": args.max_tokens, "truncated": result.end_byte < text.len(),
-                "result": result}),
-            )
+            Ok(execute(
+                &engine,
+                Operation::Truncate {
+                    text: args.text.input.read()?,
+                    max_tokens: args.max_tokens,
+                },
+            )?)
         }
         Command::Chunk(args) => {
             let engine = args.text.model.load()?;
-            let text = args.text.input.read()?;
-            Ok(
-                json!({"artifact": engine.artifact(), "options": engine.options(),
-                "max_tokens": args.max_tokens, "chunks": engine.chunk(&text, args.max_tokens)?}),
-            )
+            Ok(execute(
+                &engine,
+                Operation::Chunk {
+                    text: args.text.input.read()?,
+                    max_tokens: args.max_tokens,
+                },
+            )?)
         }
         Command::Serve(_) | Command::Jsonl(_) => {
             unreachable!("async commands are dispatched by main")
@@ -289,7 +298,8 @@ async fn jsonl(args: JsonlCommand) -> Result<()> {
         Box::new(tokio::io::BufReader::new(tokio::io::stdin()))
     };
     let writer: Box<dyn tokio::io::AsyncWrite + Unpin + Send> = if let Some(path) = args.output {
-        Box::new(tokio::io::BufWriter::new(
+        Box::new(tokio::io::BufWriter::with_capacity(
+            64 * 1024,
             tokio::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -298,7 +308,10 @@ async fn jsonl(args: JsonlCommand) -> Result<()> {
                 .with_context(|| format!("creating new output {}", path.display()))?,
         ))
     } else {
-        Box::new(tokio::io::BufWriter::new(tokio::io::stdout()))
+        Box::new(tokio::io::BufWriter::with_capacity(
+            64 * 1024,
+            tokio::io::stdout(),
+        ))
     };
     let signal_cancel = cancel.clone();
     let signal = tokio::spawn(async move {
@@ -348,7 +361,7 @@ fn main() -> Result<()> {
         command => run(Cli { command })?,
     };
     let mut stdout = io::BufWriter::new(io::stdout().lock());
-    serde_json::to_writer_pretty(&mut stdout, &output)?;
+    stdout.write_all(&output)?;
     writeln!(stdout)?;
     stdout.flush()?;
     Ok(())

@@ -36,7 +36,8 @@ enum ResultSource {
 struct Pending {
     line: u64,
     source: ResultSource,
-    // Held through output flush, so slow consumers bound completed results too.
+    // Held through writing to the bounded output buffer, so slow consumers
+    // bound completed results as well as queued work.
     _window: OwnedSemaphorePermit,
 }
 
@@ -66,40 +67,71 @@ where
     });
     let consume = async {
         let mut summary = Summary::default();
-        while let Some(pending) = receiver.recv().await {
+        let mut unflushed = 0;
+        loop {
+            // Batch ready results, but flush before waiting on more input. This
+            // preserves interactive latency without forcing a syscall per row.
+            let pending = match receiver.try_recv() {
+                Ok(pending) => Some(pending),
+                Err(mpsc::error::TryRecvError::Empty) => {
+                    if unflushed > 0 {
+                        writer.flush().await?;
+                        unflushed = 0;
+                    }
+                    receiver.recv().await
+                }
+                Err(mpsc::error::TryRecvError::Disconnected) => None,
+            };
+            let Some(pending) = pending else {
+                break;
+            };
+            let pending = match pending {
+                Ok(pending) => pending,
+                Err(error) => {
+                    writer.flush().await?;
+                    return Err(error.into());
+                }
+            };
             let Pending {
                 line,
                 source,
                 _window,
-            } = pending?;
-            let result = match source {
-                ResultSource::Worker(ticket) => match ticket.await {
-                    Ok(result) => result,
-                    Err(_) => Err(WorkError::Failed),
-                },
+            } = pending;
+            match source {
+                ResultSource::Worker(mut ticket) => {
+                    let result = match ticket.try_recv() {
+                        Ok(result) => result,
+                        Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                            if unflushed > 0 {
+                                writer.flush().await?;
+                                unflushed = 0;
+                            }
+                            ticket.await.unwrap_or(Err(WorkError::Failed))
+                        }
+                        Err(_) => Err(WorkError::Failed),
+                    };
+                    match result {
+                        Ok(bytes) => writer.write_all(&bytes).await?,
+                        Err(error) => {
+                            summary.errors += 1;
+                            write_error(&mut writer, line, error.code(), &error.to_string())
+                                .await?;
+                        }
+                    }
+                }
                 ResultSource::Invalid { code, message } => {
                     summary.errors += 1;
                     write_error(&mut writer, line, code, &message).await?;
-                    summary.records += 1;
-                    continue;
-                }
-            };
-            match result {
-                Ok(bytes) => {
-                    writer
-                        .write_all(format!("{{\"line\":{line},\"result\":").as_bytes())
-                        .await?;
-                    writer.write_all(&bytes).await?;
-                    writer.write_all(b"}\n").await?;
-                    writer.flush().await?;
-                }
-                Err(error) => {
-                    summary.errors += 1;
-                    write_error(&mut writer, line, error.code(), &error.to_string()).await?;
                 }
             }
             summary.records += 1;
+            unflushed += 1;
+            if unflushed >= 64 {
+                writer.flush().await?;
+                unflushed = 0;
+            }
         }
+        writer.flush().await?;
         Ok::<_, anyhow::Error>(summary)
     };
     let result = tokio::select! {
@@ -122,8 +154,7 @@ async fn write_error<W: AsyncWrite + Unpin>(
     let bytes =
         serde_json::to_vec(&json!({"line": line, "error": {"code": code, "message": message}}))?;
     writer.write_all(&bytes).await?;
-    writer.write_all(b"\n").await?;
-    writer.flush().await
+    writer.write_all(b"\n").await
 }
 
 async fn produce<R: AsyncBufRead + Unpin>(
@@ -151,7 +182,12 @@ async fn produce<R: AsyncBufRead + Unpin>(
         let source = match record {
             Some(bytes) => match serde_json::from_slice::<Operation>(&bytes) {
                 Ok(operation) => match pool.reserve() {
-                    Ok(slot) => ResultSource::Worker(pool.submit(operation, cancel.clone(), slot)),
+                    Ok(slot) => ResultSource::Worker(pool.submit_record(
+                        operation,
+                        cancel.clone(),
+                        slot,
+                        line,
+                    )),
                     Err(error) => ResultSource::Invalid {
                         code: error.code(),
                         message: error.to_string(),

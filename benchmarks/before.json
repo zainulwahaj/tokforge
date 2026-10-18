@@ -4,46 +4,62 @@
   "fixture_sha256": "3629c6197797601bfd06f03d9546d17446d139c24ee094e2fce3a76ac3786a6b",
   "os": "windows",
   "profile": "release",
+  "measurement": "Median of three timed runs, alternating baseline then optimized, without concurrent compilation",
+  "raw_runs": [
+    "runs/before-1.json",
+    "runs/before-2.json",
+    "runs/before-3.json"
+  ],
   "results": [
     {
       "input_bytes": 33800,
-      "iterations": 15,
-      "mib_per_second": 1.5532189916776302,
-      "ms_per_iteration": 20.753153333333334,
+      "iterations": 26,
+      "mib_per_second": 2.7576064321671647,
+      "ms_per_iteration": 11.689192307692307,
       "name": "count",
-      "seconds": 0.3112973
+      "seconds": 0.303919,
+      "min_ms": 11.55808076923077,
+      "max_ms": 12.232528
     },
     {
       "input_bytes": 33800,
-      "iterations": 15,
-      "mib_per_second": 1.5160408477247884,
-      "ms_per_iteration": 21.262086666666665,
+      "iterations": 23,
+      "mib_per_second": 2.414069763707989,
+      "ms_per_iteration": 13.352634782608698,
       "name": "encode",
-      "seconds": 0.3189313
+      "seconds": 0.3071106,
+      "min_ms": 12.623308333333334,
+      "max_ms": 18.736529411764707
     },
     {
       "input_bytes": 33800,
-      "iterations": 9,
-      "mib_per_second": 0.8407737667336078,
-      "ms_per_iteration": 38.33872222222222,
+      "iterations": 12,
+      "mib_per_second": 1.2730543332041278,
+      "ms_per_iteration": 25.320358333333335,
       "name": "truncate_128",
-      "seconds": 0.3450485
+      "seconds": 0.3038443,
+      "min_ms": 24.815392307692306,
+      "max_ms": 27.547918181818183
     },
     {
       "input_bytes": 33800,
       "iterations": 1,
-      "mib_per_second": 0.05008225580816664,
-      "ms_per_iteration": 643.625,
+      "mib_per_second": 0.06001262632249613,
+      "ms_per_iteration": 537.1234999999999,
       "name": "chunk_128",
-      "seconds": 0.643625
+      "seconds": 0.5371235,
+      "min_ms": 512.4421,
+      "max_ms": 607.1229999999999
     },
     {
       "input_bytes": 102000,
-      "iterations": 9,
-      "mib_per_second": 2.7114501438953713,
-      "ms_per_iteration": 35.87555555555556,
+      "iterations": 10,
+      "mib_per_second": 3.2407307984704814,
+      "ms_per_iteration": 30.016310000000004,
       "name": "jsonl_encode_2000",
-      "seconds": 0.32288
+      "seconds": 0.3001631,
+      "min_ms": 23.221853846153845,
+      "max_ms": 33.91333333333333
     }
   ]
 }

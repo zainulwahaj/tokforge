@@ -39,6 +39,11 @@ fn measure(name: &str, bytes: usize, mut run: impl FnMut()) -> Value {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Cargo test --all-targets also launches harness-free bench binaries. Keep
+    // debug builds out of performance reports and out of routine test timing.
+    if cfg!(debug_assertions) || std::env::args().any(|arg| arg == "--test") {
+        return Ok(());
+    }
     let engine = engine();
     let text = "hello café 你好 world! ".repeat(1300); // 33,800 bytes, deterministic fixture vocabulary.
     let runtime = tokio::runtime::Builder::new_current_thread()

@@ -2,13 +2,14 @@
 use std::time::Duration;
 
 use axum::{
-    extract::{rejection::JsonRejection, DefaultBodyLimit, FromRequestParts, Path, State},
+    extract::{rejection::JsonRejection, DefaultBodyLimit, FromRequestParts, State},
     http::{request::Parts, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::OwnedSemaphorePermit;
 
@@ -33,7 +34,12 @@ pub fn router(pool: CpuPool, config: ApiConfig) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/info", get(info))
-        .route("/v1/{operation}", post(process))
+        .route("/v1/count", post(count))
+        .route("/v1/encode", post(encode))
+        .route("/v1/decode", post(decode))
+        .route("/v1/truncate", post(truncate))
+        .route("/v1/chunk", post(chunk))
+        .route("/v1/process", post(process))
         .fallback(|| async { failure(StatusCode::NOT_FOUND, "not_found", "unknown endpoint") })
         .layer(DefaultBodyLimit::max(config.max_body_bytes))
         .layer(middleware::from_fn(
@@ -79,45 +85,106 @@ impl FromRequestParts<CpuPool> for Admission {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TextInput {
+    text: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecodeInput {
+    ids: Vec<u32>,
+    #[serde(default)]
+    skip_special_tokens: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BudgetInput {
+    text: String,
+    max_tokens: usize,
+}
+
+type Payload<T> = Result<Json<T>, JsonRejection>;
+
+// Deserialize directly into typed input. In particular, large ID arrays never
+// pass through a Vec<Value> or a second deserialization step.
+async fn count(
+    State(pool): State<CpuPool>,
+    Admission(permit): Admission,
+    payload: Payload<TextInput>,
+) -> Response {
+    dispatch(pool, permit, payload, |input| Operation::Count {
+        text: input.text,
+    })
+    .await
+}
+
+async fn encode(
+    State(pool): State<CpuPool>,
+    Admission(permit): Admission,
+    payload: Payload<TextInput>,
+) -> Response {
+    dispatch(pool, permit, payload, |input| Operation::Encode {
+        text: input.text,
+    })
+    .await
+}
+
+async fn decode(
+    State(pool): State<CpuPool>,
+    Admission(permit): Admission,
+    payload: Payload<DecodeInput>,
+) -> Response {
+    dispatch(pool, permit, payload, |input| Operation::Decode {
+        ids: input.ids,
+        skip_special_tokens: input.skip_special_tokens,
+    })
+    .await
+}
+
+async fn truncate(
+    State(pool): State<CpuPool>,
+    Admission(permit): Admission,
+    payload: Payload<BudgetInput>,
+) -> Response {
+    dispatch(pool, permit, payload, |input| Operation::Truncate {
+        text: input.text,
+        max_tokens: input.max_tokens,
+    })
+    .await
+}
+
+async fn chunk(
+    State(pool): State<CpuPool>,
+    Admission(permit): Admission,
+    payload: Payload<BudgetInput>,
+) -> Response {
+    dispatch(pool, permit, payload, |input| Operation::Chunk {
+        text: input.text,
+        max_tokens: input.max_tokens,
+    })
+    .await
+}
+
 async fn process(
     State(pool): State<CpuPool>,
-    Path(name): Path<String>,
     Admission(permit): Admission,
-    payload: Result<Json<Value>, JsonRejection>,
+    payload: Payload<Operation>,
 ) -> Response {
-    let mut payload = match payload {
-        Ok(Json(value)) => value,
+    dispatch(pool, permit, payload, |operation| operation).await
+}
+
+async fn dispatch<T>(
+    pool: CpuPool,
+    permit: OwnedSemaphorePermit,
+    payload: Payload<T>,
+    operation: impl FnOnce(T) -> Operation,
+) -> Response {
+    let operation = match payload {
+        Ok(Json(value)) => operation(value),
         Err(error) => return failure(error.status(), "invalid_json", &error.body_text()),
-    };
-    if name != "process" {
-        if !["count", "encode", "decode", "truncate", "chunk"].contains(&name.as_str()) {
-            return failure(StatusCode::NOT_FOUND, "not_found", "unknown operation");
-        }
-        let Some(object) = payload.as_object_mut() else {
-            return failure(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "invalid_request",
-                "expected a JSON object",
-            );
-        };
-        if object.contains_key("op") {
-            return failure(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "invalid_request",
-                "use op only with /v1/process",
-            );
-        }
-        object.insert("op".to_owned(), json!(name));
-    }
-    let operation: Operation = match serde_json::from_value(payload) {
-        Ok(operation) => operation,
-        Err(error) => {
-            return failure(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "invalid_request",
-                &error.to_string(),
-            )
-        }
     };
     let cancel = Cancellation::default();
     let _guard = cancel.guard();

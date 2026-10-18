@@ -107,10 +107,7 @@ impl Engine {
     }
 
     pub fn encode(&self, text: &str) -> Result<Encoded, Error> {
-        let encoding = self
-            .tokenizer
-            .encode(text, self.options.add_special_tokens)
-            .map_err(tokenizer_error)?;
+        let encoding = self.encode_raw(text)?;
         Ok(Encoded {
             ids: encoding.get_ids().to_vec(),
             tokens: encoding.get_tokens().to_vec(),
@@ -118,6 +115,12 @@ impl Engine {
             special_tokens_mask: encoding.get_special_tokens_mask().to_vec(),
             count: encoding.len(),
         })
+    }
+
+    pub(crate) fn encode_raw(&self, text: &str) -> Result<tokenizers::Encoding, Error> {
+        self.tokenizer
+            .encode(text, self.options.add_special_tokens)
+            .map_err(tokenizer_error)
     }
 
     pub fn count(&self, text: &str) -> Result<usize, Error> {
@@ -150,7 +153,13 @@ impl Engine {
         max_tokens: usize,
         check: &impl Fn() -> Result<(), Error>,
     ) -> Result<Chunk, Error> {
-        let (end, count) = self.fitting_prefix(text, max_tokens, check)?;
+        check()?;
+        let full_count = self.count(text)?;
+        let (end, count) = if full_count <= max_tokens {
+            (text.len(), full_count)
+        } else {
+            self.fitting_prefix(text, max_tokens, max_tokens.saturating_mul(4), check)?
+        };
         Ok(Chunk {
             text: text[..end].to_owned(),
             start_byte: 0,
@@ -173,9 +182,10 @@ impl Engine {
     ) -> Result<Vec<Chunk>, Error> {
         let mut chunks = Vec::new();
         let mut start = 0;
+        let mut hint = max_tokens.saturating_mul(4);
         while start < text.len() {
             check()?;
-            let (length, count) = self.fitting_prefix(&text[start..], max_tokens, check)?;
+            let (length, count) = self.fitting_prefix(&text[start..], max_tokens, hint, check)?;
             if length == 0 {
                 return Err(Error::BudgetTooSmall { offset: start });
             }
@@ -187,6 +197,7 @@ impl Engine {
                 count,
             });
             start = end;
+            hint = length;
         }
         Ok(chunks)
     }
@@ -195,31 +206,52 @@ impl Engine {
         &self,
         text: &str,
         budget: usize,
+        hint: usize,
         check: &impl Fn() -> Result<(), Error>,
     ) -> Result<(usize, usize), Error> {
-        check()?;
-        let full_count = self.count(text)?;
-        if full_count <= budget {
-            return Ok((text.len(), full_count));
+        // Probe a local window and reuse the previous chunk's byte size as a
+        // density estimate. No full-suffix encoding or character-index allocation
+        // is needed on the common path. Grow only while candidates fit.
+        let mut end = hint.max(1).min(text.len());
+        while !text.is_char_boundary(end) {
+            end += 1;
         }
-        let boundaries: Vec<usize> = text
-            .char_indices()
-            .map(|(index, _)| index)
-            .chain(std::iter::once(text.len()))
-            .collect();
-        let mut low = 1;
-        let mut high = boundaries.len() - 1;
+        let mut low = 0;
         let mut best = None;
-        // Every accepted candidate is encoded on its own; monotonic counts are
-        // not required for safety. Binary probing need not find a maximal prefix.
-        while low < high {
+        let mut high = loop {
             check()?;
-            let middle = low + (high - low) / 2;
-            let end = boundaries[middle];
             let count = self.count(&text[..end])?;
+            if count > budget {
+                break end;
+            }
+            if end == text.len() || (count == budget && count > 0) {
+                return Ok((end, count));
+            }
+            best = Some((end, count));
+            low = end;
+            end = end.saturating_mul(2).min(text.len());
+            while !text.is_char_boundary(end) {
+                end += 1;
+            }
+        };
+        // Counts need not be monotonic: every returned slice is independently
+        // verified. Binary refinement improves utilization, not correctness.
+        while high - low > 1 {
+            check()?;
+            let mut middle = low + (high - low) / 2;
+            while !text.is_char_boundary(middle) {
+                middle -= 1;
+            }
+            if middle <= low {
+                break;
+            }
+            let count = self.count(&text[..middle])?;
             if count <= budget {
-                best = Some((end, count));
-                low = middle + 1;
+                if count == budget && count > 0 {
+                    return Ok((middle, count));
+                }
+                best = Some((middle, count));
+                low = middle;
             } else {
                 high = middle;
             }
@@ -227,9 +259,17 @@ impl Engine {
         if let Some(prefix) = best {
             return Ok(prefix);
         }
-        // Merges/normalization can make a longer prefix fit when a shorter one
-        // does not. Fallback prevents incorrectly declaring no progress possible.
-        for &end in boundaries.iter().skip(1).rev().skip(1) {
+        // Rare fallback: a later merge or normalization may make a longer
+        // prefix fit even if every local probe failed. Avoid false impossibility.
+        check()?;
+        let full_count = self.count(text)?;
+        if full_count <= budget {
+            return Ok((text.len(), full_count));
+        }
+        for (end, _) in text.char_indices().rev() {
+            if end == 0 {
+                break;
+            }
             check()?;
             let count = self.count(&text[..end])?;
             if count <= budget {
@@ -271,9 +311,9 @@ mod tests {
                 }
             };
             let result = if chunk {
-                engine.chunk_checked(&text, 1, &check).map(|_| ())
+                engine.chunk_checked(&text, 0, &check).map(|_| ())
             } else {
-                engine.truncate_checked(&text, 1, &check).map(|_| ())
+                engine.truncate_checked(&text, 0, &check).map(|_| ())
             };
             assert!(matches!(result, Err(Error::Cancelled)));
         }

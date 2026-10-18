@@ -7,11 +7,10 @@ use std::{
     },
 };
 
-use serde::Deserialize;
-use serde_json::{json, Value};
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use tokio::sync::{oneshot, watch, OwnedSemaphorePermit, Semaphore};
 
-use crate::{Engine, Error};
+use crate::{Artifact, Chunk, EncodeOptions, Engine, Error};
 
 #[derive(Clone)]
 pub struct Cancellation {
@@ -84,33 +83,127 @@ impl Operation {
         self,
         engine: &Engine,
         check: &impl Fn() -> Result<(), Error>,
-    ) -> Result<Value, Error> {
+    ) -> Result<ResultData, Error> {
         check()?;
-        let mut output = json!({"artifact": engine.artifact(), "options": engine.options()});
-        match self {
-            Self::Count { text } => output["count"] = json!(engine.count(&text)?),
-            Self::Encode { text } => output["encoding"] = json!(engine.encode(&text)?),
+        let output = match self {
+            Self::Count { text } => ResultData::Count {
+                count: engine.count(&text)?,
+            },
+            Self::Encode { text } => ResultData::Encode {
+                encoding: engine.encode_raw(&text)?,
+            },
             Self::Decode {
                 ids,
                 skip_special_tokens,
-            } => {
-                output["text"] = json!(engine.decode(&ids, skip_special_tokens)?);
-                output["skip_special_tokens"] = json!(skip_special_tokens);
-            }
+            } => ResultData::Decode {
+                text: engine.decode(&ids, skip_special_tokens)?,
+                skip_special_tokens,
+            },
             Self::Truncate { text, max_tokens } => {
                 let prefix = engine.truncate_checked(&text, max_tokens, check)?;
-                output["truncated"] = json!(prefix.end_byte < text.len());
-                output["max_tokens"] = json!(max_tokens);
-                output["result"] = json!(prefix);
+                ResultData::Truncate {
+                    truncated: prefix.end_byte < text.len(),
+                    max_tokens,
+                    result: prefix,
+                }
             }
-            Self::Chunk { text, max_tokens } => {
-                output["chunks"] = json!(engine.chunk_checked(&text, max_tokens, check)?);
-                output["max_tokens"] = json!(max_tokens);
-            }
-        }
+            Self::Chunk { text, max_tokens } => ResultData::Chunk {
+                chunks: engine.chunk_checked(&text, max_tokens, check)?,
+                max_tokens,
+            },
+        };
         check()?;
         Ok(output)
     }
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum ResultData {
+    Count {
+        count: usize,
+    },
+    Encode {
+        #[serde(serialize_with = "serialize_encoding")]
+        encoding: tokenizers::Encoding,
+    },
+    Decode {
+        text: String,
+        skip_special_tokens: bool,
+    },
+    Truncate {
+        truncated: bool,
+        max_tokens: usize,
+        result: Chunk,
+    },
+    Chunk {
+        chunks: Vec<Chunk>,
+        max_tokens: usize,
+    },
+}
+
+// Serialize directly from the tokenizer's owned buffers. Building an Encoded
+// plus a serde_json::Value would copy every ID, token string, and byte offset.
+fn serialize_encoding<S: Serializer>(
+    encoding: &tokenizers::Encoding,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let mut output = serializer.serialize_struct("Encoded", 5)?;
+    output.serialize_field("ids", encoding.get_ids())?;
+    output.serialize_field("tokens", encoding.get_tokens())?;
+    output.serialize_field("offsets", encoding.get_offsets())?;
+    output.serialize_field("special_tokens_mask", encoding.get_special_tokens_mask())?;
+    output.serialize_field("count", &encoding.len())?;
+    output.end()
+}
+
+#[derive(Serialize)]
+struct Response<'a> {
+    artifact: &'a Artifact,
+    options: EncodeOptions,
+    #[serde(flatten)]
+    result: ResultData,
+}
+
+#[derive(Serialize)]
+struct Record<T> {
+    line: u64,
+    result: T,
+}
+
+/// Execute and serialize a single operation without constructing a JSON tree.
+pub fn execute(engine: &Engine, operation: Operation) -> WorkResult {
+    execute_checked(engine, operation, &|| Ok(()), None)
+}
+
+fn execute_checked(
+    engine: &Engine,
+    operation: Operation,
+    check: &impl Fn() -> Result<(), Error>,
+    line: Option<u64>,
+) -> WorkResult {
+    let result = operation.execute(engine, check)?;
+    let response = Response {
+        artifact: engine.artifact(),
+        options: engine.options(),
+        result,
+    };
+    let mut bytes = Vec::with_capacity(512);
+    if let Some(line) = line {
+        serde_json::to_writer(
+            &mut bytes,
+            &Record {
+                line,
+                result: response,
+            },
+        )
+        .map_err(|_| WorkError::Failed)?;
+        bytes.push(b'\n');
+    } else {
+        serde_json::to_writer(&mut bytes, &response).map_err(|_| WorkError::Failed)?;
+    }
+    check()?;
+    Ok(bytes)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -199,6 +292,26 @@ impl CpuPool {
         cancel: Cancellation,
         permit: OwnedSemaphorePermit,
     ) -> Ticket {
+        self.submit_inner(operation, cancel, permit, None)
+    }
+
+    pub(crate) fn submit_record(
+        &self,
+        operation: Operation,
+        cancel: Cancellation,
+        permit: OwnedSemaphorePermit,
+        line: u64,
+    ) -> Ticket {
+        self.submit_inner(operation, cancel, permit, Some(line))
+    }
+
+    fn submit_inner(
+        &self,
+        operation: Operation,
+        cancel: Cancellation,
+        permit: OwnedSemaphorePermit,
+        line: Option<u64>,
+    ) -> Ticket {
         let (sender, receiver) = oneshot::channel();
         let engine = self.engine.clone();
         let shutdown = self.shutdown.clone();
@@ -212,10 +325,7 @@ impl CpuPool {
                 }
             };
             let result = catch_unwind(AssertUnwindSafe(|| {
-                let value = operation.execute(&engine, &check)?;
-                let bytes = serde_json::to_vec(&value).map_err(|_| WorkError::Failed)?;
-                check()?;
-                Ok(bytes)
+                execute_checked(&engine, operation, &check, line)
             }))
             .unwrap_or(Err(WorkError::Failed));
             drop(_permit);
@@ -243,8 +353,6 @@ mod tests {
         )
         .unwrap()
     }
-
-    use crate::EncodeOptions;
 
     #[tokio::test]
     async fn queued_cancellation_releases_capacity_and_shutdown_rejects_new_work() {

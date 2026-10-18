@@ -7,8 +7,8 @@ Rust tokenization and document preparation project.
 The shared engine and CLI support `info`, `count`, `encode`, `decode`, `truncate`,
 and `chunk`, using a local Hugging Face `tokenizer.json` artifact. `serve` exposes
 the same operations over HTTP, and `jsonl` processes ordered streaming records.
-All results are JSON. Large-document optimization and performance benchmarks
-are next.
+All results are JSON. The release benchmark runner and measured optimization
+results are described in [PERFORMANCE.md](PERFORMANCE.md).
 
 ## Try the CLI
 
@@ -16,12 +16,12 @@ The tiny WordPiece fixture is included for testing; use your model's exported
 tokenizer for real counts.
 
 ```powershell
-cargo run -- info
-cargo run -- count --tokenizer tests/fixtures/wordpiece.json --text "hello world!"
-cargo run -- encode --tokenizer tests/fixtures/wordpiece.json --text "hello world!"
-cargo run -- decode --tokenizer tests/fixtures/wordpiece.json --text '[4,5,6]'
-cargo run -- truncate --tokenizer tests/fixtures/wordpiece.json --text "hello world!" --max-tokens 2
-cargo run -- chunk --tokenizer tests/fixtures/wordpiece.json --text "hello world!" --max-tokens 2
+cargo run --release -- info
+cargo run --release -- count --tokenizer tests/fixtures/wordpiece.json --text "hello world!"
+cargo run --release -- encode --tokenizer tests/fixtures/wordpiece.json --text "hello world!"
+cargo run --release -- decode --tokenizer tests/fixtures/wordpiece.json --text '[4,5,6]'
+cargo run --release -- truncate --tokenizer tests/fixtures/wordpiece.json --text "hello world!" --max-tokens 2
+cargo run --release -- chunk --tokenizer tests/fixtures/wordpiece.json --text "hello world!" --max-tokens 2
 ```
 
 For your own tokenizer, replace the fixture path with `models/tokenizer.json`.
@@ -37,7 +37,7 @@ stderr.
 Start a server (substitute your production tokenizer when ready):
 
 ```powershell
-cargo run -- serve --tokenizer tests/fixtures/wordpiece.json --workers 4 --queue-capacity 16
+cargo run --release -- serve --tokenizer tests/fixtures/wordpiece.json --workers 4 --queue-capacity 16
 ```
 
 The default address is `127.0.0.1:8080`; change it with `--bind IP:PORT`.
@@ -94,7 +94,7 @@ Each physical input line is one operation object. Available operations:
 Run against a file or leave out `--file` to read stdin:
 
 ```powershell
-cargo run -- jsonl --tokenizer tests/fixtures/wordpiece.json --file records.jsonl --output results.jsonl --workers 4 --queue-capacity 16
+cargo run --release -- jsonl --tokenizer tests/fixtures/wordpiece.json --file records.jsonl --output results.jsonl --workers 4 --queue-capacity 16
 ```
 
 Omit `--output` to write compact JSONL to stdout. An output file must be new;
@@ -103,9 +103,11 @@ record/error count go to stderr. A successful record produces
 `{"line":1,"result":{"artifact":{...},"options":{...},"count":3}}`.
 A failed record produces `{"line":2,"error":{"code":"invalid_request","message":"..."}}`.
 
-Records run concurrently but results are written in input order, flushed after
-each record, even while stdin remains open. The pipeline keeps at most
-`workers + queue-capacity` records in progress through output flush. Slow input
+Records run concurrently but results are written in input order. Ready records
+are batched, with a flush before waiting on input or CPU work, after 64 records,
+and at EOF. A result is emitted promptly even while stdin remains open.
+The pipeline keeps at most `workers + queue-capacity` records queued, executing,
+or waiting to be written, plus the CLI's bounded 64 KiB output buffer. Slow input
 and slow output apply backpressure. Memory scales with that window and record
 size, rather than total dataset size; results can be larger than their inputs.
 
@@ -147,11 +149,14 @@ its CPU slot until that call returns, even if the HTTP deadline has expired.
   Each output is independently re-encoded and verified against `--max-tokens`.
   Source ranges use an inclusive `start_byte` and exclusive `end_byte`.
   Cuts preserve Unicode scalars, but may split words or grapheme clusters.
-- Prefix search uses binary probing with an exhaustive fallback when no
-  nonempty candidate fits. Token counts can decrease as text grows, so this
-  does not promise the longest possible prefix or fullest possible chunks.
-  This correctness-first implementation repeatedly encodes prefixes and is
-  not yet optimized for large documents; fallback can be quadratic.
+- Chunk prefix search probes local windows, reuses the previous chunk's byte
+  length as a density estimate, and stops once a verified budget-filling prefix
+  is found. It avoids repeatedly encoding the entire remaining document and
+  allocating a character-boundary table per chunk. Truncate first checks whether
+  the entire input fits. Token counts can decrease as text grows, so neither
+  operation promises the longest possible prefix or fullest possible chunks.
+  A rare exhaustive fallback handles cases where no local prefix fits but a
+  later merge or normalization could help; this fallback can still be quadratic.
 - Zero budgets are accepted: truncate may return empty text, while chunk
   fails if it cannot make progress. Empty source yields zero chunks. If the
   empty prefix's added special tokens exceed the budget, truncate fails.
@@ -203,8 +208,9 @@ selected workspace or its permission scope.
 
 ## Next implementation steps
 
-1. Optimize prefix search and add reproducible throughput/latency benchmarks.
+1. Profile production tokenizers and datasets, including tail latency and allocations.
 2. Expand fixtures to real model artifacts and cross-implementation comparisons.
+3. Tune batch sizes and worker counts against measured throughput and memory use.
 
 The current tests cover known IDs and byte offsets, saved padding/truncation
 overrides, special tokens, malformed input, Unicode byte-level round trips,
