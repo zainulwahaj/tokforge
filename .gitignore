@@ -1,0 +1,9 @@
+/target/
+/.setup/
+*.log
+.env
+.env.*
+!.env.example
+/models/*.json
+!/models/README.md
+/data/
