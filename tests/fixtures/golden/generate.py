@@ -224,6 +224,19 @@ def build_oracle(entry: dict) -> Oracle:
     raise SystemExit(f"no oracle defined for artifact {name}")
 
 
+# Header fields that describe the machine that ran the generator, not the result. A different
+# Python patch release cannot change token ids, so --check leaves these out of the comparison;
+# the oracle and cross-check versions (which can) stay in it.
+ENVIRONMENT_FIELDS = ("python",)
+
+
+def comparable(text: str) -> dict:
+    data = json.loads(text)
+    for field in ENVIRONMENT_FIELDS:
+        data.pop(field, None)
+    return data
+
+
 def render(golden: dict) -> str:
     """Pretty JSON with every `ids` array kept on a single line."""
     placeholders = {}
@@ -284,7 +297,8 @@ def generate(entry: dict, corpus, args) -> int:
         target = os.path.join(out_dir, corpus_name[: -len(".txt")] + ".json")
         if args.check:
             existing = open(target, "r", encoding="utf-8").read() if os.path.exists(target) else None
-            status = "same" if existing == rendered else "DIFFERENT"
+            same = existing is not None and comparable(existing) == comparable(rendered)
+            status = "same" if same else "DIFFERENT"
             differences += status != "same"
             print(f"{status:9s} {os.path.relpath(target, ROOT)}")
         else:
