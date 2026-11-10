@@ -21,11 +21,13 @@ use sha2::{Digest, Sha256};
 use tokforge::{Chunk, EncodeOptions, Engine, Error, SpecialTokens};
 
 /// Every artifact the manifest must list. Each has its own `#[test]` below so failures are isolated.
-const ARTIFACTS: [&str; 4] = [
+const ARTIFACTS: [&str; 6] = [
     "gpt2",
     "qwen2.5-0.5b",
     "bert-base-uncased",
     "xlm-roberta-base",
+    "cl100k_base",
+    "o200k_base",
 ];
 const BUDGETS: [usize; 4] = [1, 7, 64, 512];
 const MAX_CORPUS_BYTES: u64 = 8192;
@@ -212,6 +214,16 @@ fn golden_path(artifact: &str, corpus: &Path) -> PathBuf {
 fn special_tokens(name: &str) -> (usize, &'static [(u32, &'static str)]) {
     match name {
         "gpt2" => (0, &[(50256, "<|endoftext|>")]),
+        "cl100k_base" => (
+            0,
+            &[
+                (100257, "<|endoftext|>"),
+                (100258, "<|fim_prefix|>"),
+                (100264, "<|im_start|>"),
+                (100276, "<|endofprompt|>"),
+            ],
+        ),
+        "o200k_base" => (0, &[(199999, "<|endoftext|>"), (200018, "<|endofprompt|>")]),
         "qwen2.5-0.5b" => (
             0,
             &[
@@ -843,4 +855,14 @@ fn bert_base_uncased_matches_slow_bert_goldens_and_budget_invariants() {
 #[test]
 fn xlm_roberta_base_matches_sentencepiece_goldens_and_budget_invariants() {
     check_artifact("xlm-roberta-base");
+}
+
+#[test]
+fn cl100k_base_matches_tiktoken_goldens_and_budget_invariants() {
+    check_artifact("cl100k_base");
+}
+
+#[test]
+fn o200k_base_matches_tiktoken_goldens_and_budget_invariants() {
+    check_artifact("o200k_base");
 }

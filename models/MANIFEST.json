@@ -110,6 +110,48 @@
           "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"
         }
       ]
+    },
+    {
+      "name": "cl100k_base",
+      "family": "byte-level BPE (cl100k regex pre-tokenizer, no normalizer)",
+      "repo_id": "Xenova/gpt-4",
+      "revision": "1d9f1f1b1fae88c0e4df1dab0a397f8de6229075",
+      "remote_file": "tokenizer.json",
+      "file": "cl100k_base.tokenizer.json",
+      "source_url": "https://huggingface.co/Xenova/gpt-4/resolve/1d9f1f1b1fae88c0e4df1dab0a397f8de6229075/tokenizer.json",
+      "license": "MIT (OpenAI tiktoken encoding; Hugging Face conversion by Xenova)",
+      "size_bytes": 4233780,
+      "sha256": "239eb2359f79c38497476671aaa835e01fb43d42743c612a8514a0dfa2ac93a2",
+      "vocab_size": 100263,
+      "model_type": "BPE",
+      "pre_tokenizer": "Sequence[Split, ByteLevel]",
+      "normalizer": null,
+      "post_processor": null,
+      "decoder": "ByteLevel",
+      "roundtrip": "exact",
+      "roundtrip_note": "Byte-level BPE decodes back to the exact input bytes in both special-token modes.",
+      "oracle": "tiktoken `cl100k_base` encoding with the artifact's added special tokens: literal mode uses disallowed_special=(), recognize mode allowed_special=\"all\"."
+    },
+    {
+      "name": "o200k_base",
+      "family": "byte-level BPE (o200k regex pre-tokenizer, no normalizer)",
+      "repo_id": "Xenova/gpt-4o",
+      "revision": "7956d98f2a83b2751a98ea7136fdf7fe6cf54e69",
+      "remote_file": "tokenizer.json",
+      "file": "o200k_base.tokenizer.json",
+      "source_url": "https://huggingface.co/Xenova/gpt-4o/resolve/7956d98f2a83b2751a98ea7136fdf7fe6cf54e69/tokenizer.json",
+      "license": "MIT (OpenAI tiktoken encoding; Hugging Face conversion by Xenova)",
+      "size_bytes": 9729051,
+      "sha256": "43a3ad4618a6a938f8c2614154ea10c31ad53a62d5683ae0b0e6133575cef07e",
+      "vocab_size": 200000,
+      "model_type": "BPE",
+      "pre_tokenizer": "Sequence[Split, ByteLevel]",
+      "normalizer": null,
+      "post_processor": null,
+      "decoder": "ByteLevel",
+      "roundtrip": "exact",
+      "roundtrip_note": "Byte-level BPE decodes back to the exact input bytes in both special-token modes.",
+      "oracle": "tiktoken `o200k_base` encoding with the artifact's added special tokens: literal mode uses disallowed_special=(), recognize mode allowed_special=\"all\"."
     }
   ]
 }

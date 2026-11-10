@@ -25,7 +25,7 @@ use unicode_normalization_alignments::{is_nfc, is_nfc_quick, IsNormalized};
 
 pub use pretokenize::{
     classify, split as pretokenize_split, Class, Pattern, Unsupported as PretokenizeUnsupported,
-    QWEN2_PATTERN,
+    CL100K_PATTERN, QWEN2_PATTERN,
 };
 
 /// Words at least this long are not cached (matches the backend's policy).
@@ -679,6 +679,7 @@ impl ByteLevelBpe {
             match self.pattern {
                 Pattern::Gpt2 => "GPT-2",
                 Pattern::Qwen2 => "Qwen2",
+                Pattern::Cl100k => "cl100k",
             },
             if self.nfc {
                 "NFC normalizer"
@@ -999,13 +1000,24 @@ fn detect_pattern(pre_tokenizer: Option<&serde_json::Value>) -> Result<Pattern, 
                 .get("pattern")
                 .and_then(|p| p.get("Regex"))
                 .and_then(|r| r.as_str());
-            if split.get("type").and_then(|t| t.as_str()) == Some("Split")
-                && regex == Some(QWEN2_PATTERN)
-                && split.get("behavior").and_then(|b| b.as_str()) == Some("Isolated")
-                && split.get("invert").and_then(|i| i.as_bool()) != Some(true)
-                && is_plain_byte_level(byte_level, false)
-            {
-                return Ok(Pattern::Qwen2);
+            let pattern = match regex {
+                Some(QWEN2_PATTERN) => Some(Pattern::Qwen2),
+                Some(CL100K_PATTERN) => Some(Pattern::Cl100k),
+                _ => None,
+            };
+            // These patterns match every scalar, so `Isolated` and `Removed` with `invert` (keep
+            // the matches, drop the empty gaps between them) produce the same pieces.
+            let behavior = split.get("behavior").and_then(|b| b.as_str());
+            let invert = split.get("invert").and_then(|i| i.as_bool()) == Some(true);
+            let keeps_every_match = matches!((behavior, invert), (Some("Isolated"), false))
+                || matches!((behavior, invert), (Some("Removed"), true));
+            if let Some(pattern) = pattern {
+                if split.get("type").and_then(|t| t.as_str()) == Some("Split")
+                    && keeps_every_match
+                    && is_plain_byte_level(byte_level, false)
+                {
+                    return Ok(pattern);
+                }
             }
         }
     }

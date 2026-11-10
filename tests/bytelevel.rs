@@ -464,6 +464,15 @@ fn real_artifacts_match_backend_on_corpus_and_random_text() {
                 "<|vision_start|>",
             ],
         ),
+        (
+            "cl100k_base.tokenizer.json",
+            vec![
+                "<|endoftext|>",
+                "<|fim_prefix|>",
+                "<|endofprompt|>",
+                "<|im_start|>",
+            ],
+        ),
     ] {
         let path = root().join("models").join(file);
         if !path.is_file() {
@@ -515,7 +524,11 @@ fn engine_selects_the_core_and_stays_identical_to_the_backend_engine() {
             false,
         ),
     )];
-    for file in ["gpt2.tokenizer.json", "qwen2.5-0.5b.tokenizer.json"] {
+    for file in [
+        "gpt2.tokenizer.json",
+        "qwen2.5-0.5b.tokenizer.json",
+        "cl100k_base.tokenizer.json",
+    ] {
         let path = root().join("models").join(file);
         if path.is_file() {
             artifacts.push((file.to_owned(), fs::read(&path).unwrap()));
@@ -1180,6 +1193,7 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
     for (file, nfc) in [
         ("gpt2.tokenizer.json", false),
         ("qwen2.5-0.5b.tokenizer.json", true),
+        ("cl100k_base.tokenizer.json", true),
     ] {
         let path = root().join("models").join(file);
         if path.is_file() {
@@ -1188,11 +1202,17 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
             eprintln!("SKIPPED: {} not present", path.display());
         }
     }
-    for (label, json, nfc) in &artifacts {
+    // The flag: whether the artifact may decline inputs. NFC normalizers decline singletons and
+    // case-insensitive contractions (Qwen2, cl100k) decline ones next to non-ASCII scalars; GPT-2
+    // has neither and must serve every input itself.
+    for (label, json, may_decline) in &artifacts {
         let texts = soak_hard_cases(&added_token_spellings(json));
         let declined = assert_core_matches(json, label, &texts);
-        if *nfc {
-            assert!(declined > 0, "{label}: NFC singletons must be declined");
+        if *may_decline {
+            assert!(
+                declined > 0,
+                "{label}: hard cases include inputs it must decline"
+            );
         } else {
             assert_eq!(
                 declined, 0,

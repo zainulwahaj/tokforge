@@ -8,6 +8,9 @@
 //! Qwen2 (`Split` with the pattern below, then `ByteLevel` without its own regex):
 //! `(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+`
 //!
+//! cl100k_base (GPT-4, GPT-3.5-turbo) and Llama 3: the Qwen2 pattern with `\p{N}{1,3}` in place
+//! of `\p{N}`, so digits are grouped up to three at a time.
+//!
 //! Scalar classes come from `unicode_tables.rs`, captured from the regex engine itself.
 
 use super::unicode_tables::{LETTERS, NUMBERS, WHITESPACE};
@@ -15,10 +18,14 @@ use super::unicode_tables::{LETTERS, NUMBERS, WHITESPACE};
 /// The exact regex text the Qwen2 family stores in its `Split` pre-tokenizer.
 pub const QWEN2_PATTERN: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
 
+/// The regex text cl100k_base conversions (and Llama 3) store in their `Split` pre-tokenizer.
+pub const CL100K_PATTERN: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pattern {
     Gpt2,
     Qwen2,
+    Cl100k,
 }
 
 fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
@@ -126,7 +133,8 @@ pub fn split(
     while pos < text.len() {
         let len = match pattern {
             Pattern::Gpt2 => gpt2_match(text, pos),
-            Pattern::Qwen2 => qwen2_match(text, pos)?,
+            Pattern::Qwen2 => qwen2_match(text, pos, 1)?,
+            Pattern::Cl100k => qwen2_match(text, pos, 3)?,
         };
         debug_assert!(len > 0 && text.is_char_boundary(pos + len));
         emit(pos, pos + len);
@@ -211,7 +219,9 @@ fn gpt2_match(text: &str, pos: usize) -> usize {
     whitespace_tail(text, pos)
 }
 
-fn qwen2_match(text: &str, pos: usize) -> Result<usize, Unsupported> {
+/// Qwen2's pattern, whose digit alternative is `\p{N}` (`max_digits` 1), and cl100k's, the same
+/// pattern with `\p{N}{1,3}` (`max_digits` 3).
+fn qwen2_match(text: &str, pos: usize, max_digits: usize) -> Result<usize, Unsupported> {
     let rest = &text[pos..];
     let first = rest.chars().next().unwrap();
     let apostrophe = contraction_ci(text, pos)?;
@@ -228,9 +238,14 @@ fn qwen2_match(text: &str, pos: usize) -> Result<usize, Unsupported> {
     if letters > 0 {
         return Ok(prefix + letters);
     }
-    // `\p{N}`: one scalar.
+    // `\p{N}` or `\p{N}{1,3}`: up to `max_digits` scalars.
     if is_number(first) {
-        return Ok(first.len_utf8());
+        return Ok(rest
+            .chars()
+            .take(max_digits)
+            .take_while(|&c| is_number(c))
+            .map(char::len_utf8)
+            .sum());
     }
     // ` ?[^\s\p{L}\p{N}]+[\r\n]*`
     let space = usize::from(first == ' ');
@@ -290,6 +305,18 @@ mod tests {
             split(Pattern::Qwen2, "it'ſ", |_, _| {}),
             Err(Unsupported::FoldedContraction)
         );
+    }
+
+    #[test]
+    fn cl100k_groups_digits_in_threes_and_otherwise_follows_qwen2() {
+        assert_eq!(
+            pieces(Pattern::Cl100k, "Hello world's 1234567\n\n  x"),
+            ["Hello", " world", "'s", " ", "123", "456", "7", "\n\n", " ", " x"]
+        );
+        assert_eq!(pieces(Pattern::Cl100k, "12"), ["12"]);
+        assert_eq!(pieces(Pattern::Cl100k, "a1234b"), ["a", "123", "4", "b"]);
+        // Non-ASCII digits are \p{N} too, and a group never crosses a non-digit.
+        assert_eq!(pieces(Pattern::Cl100k, "٣٤٥٦ 1½"), ["٣٤٥", "٦", " ", "1½"]);
     }
 
     #[test]

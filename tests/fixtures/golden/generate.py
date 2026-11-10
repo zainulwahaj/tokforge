@@ -88,6 +88,37 @@ class TiktokenGpt2(Oracle):
         return self.enc.encode(text, allowed_special="all")
 
 
+class Tiktoken(Oracle):
+    """tiktoken's own BPE ranks and regex for `encoding`, with the special tokens the artifact
+    registers. The Hugging Face conversions add tokens tiktoken's encoding lacks (cl100k:
+    <|im_start|>, <|im_end|>); taking the special list from the artifact keeps recognize mode
+    comparable while the tokenization itself stays tiktoken's."""
+
+    def __init__(self, encoding: str, tokenizer_json: str) -> None:
+        import tiktoken
+
+        base = tiktoken.get_encoding(encoding)
+        with open(tokenizer_json, "r", encoding="utf-8") as handle:
+            added = json.load(handle).get("added_tokens", [])
+        specials = {**base._special_tokens, **{t["content"]: t["id"] for t in added if t.get("special")}}
+        self.enc = tiktoken.Encoding(
+            name=f"{encoding}+artifact-specials",
+            pat_str=base._pat_str,
+            mergeable_ranks=base._mergeable_ranks,
+            special_tokens=specials,
+        )
+        extra = sorted(set(specials) - set(base._special_tokens))
+        self.name = f"tiktoken {tiktoken.__version__} encoding={encoding}" + (
+            f" + artifact specials {extra}" if extra else ""
+        )
+
+    def encode(self, text, literal, add_special_tokens):
+        assert not add_special_tokens
+        if literal:
+            return self.enc.encode(text, disallowed_special=())
+        return self.enc.encode(text, allowed_special="all")
+
+
 class TransformersFast(Oracle):
     """transformers fast tokenizer; shares the HF Rust backend family with the engine."""
 
@@ -215,6 +246,8 @@ def build_oracle(entry: dict) -> Oracle:
     extras = {e["remote_file"]: os.path.join(MODELS, e["file"]) for e in entry.get("oracle_files", [])}
     if name == "gpt2":
         return TiktokenGpt2()
+    if name in ("cl100k_base", "o200k_base"):
+        return Tiktoken(name, model)
     if name == "qwen2.5-0.5b":
         return TransformersFast(model, extras["tokenizer_config.json"])
     if name == "bert-base-uncased":
