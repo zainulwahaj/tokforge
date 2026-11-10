@@ -1,0 +1,45 @@
+tokforge.clairoai.tech {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+
+	request_body {
+		max_size 128KB
+	}
+
+	# Only the read-only operations the page uses reach the servers; /metrics,
+	# /v1/batch and the rest of the API stay unreachable from outside. `handle`
+	# blocks are exclusive and the longer path wins, so the bare `handle` below
+	# only ever serves the page. `route` keeps the deny ahead of the proxies.
+	handle /api/* {
+		route {
+			@denied not {
+				path_regexp ^/api/(gpt2|cl100k_base|o200k_base)/v1/(count|encode|chunk)$
+				method POST
+			}
+			respond @denied "Not found" 404
+			handle_path /api/gpt2/* {
+				reverse_proxy 127.0.0.1:18101
+			}
+			handle_path /api/cl100k_base/* {
+				reverse_proxy 127.0.0.1:18102
+			}
+			handle_path /api/o200k_base/* {
+				reverse_proxy 127.0.0.1:18103
+			}
+		}
+	}
+
+	handle {
+		root * /opt/tokforge/www
+		header Cache-Control "public, max-age=300"
+		file_server
+	}
+}

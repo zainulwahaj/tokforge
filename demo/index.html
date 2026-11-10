@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tokforge</title>
+<meta name="description" content="tokforge is a BPE tokenizer written in Rust. It returns the same token ids as tiktoken for GPT-4o, GPT-4 and GPT-2, 1.4 to 4.6 times faster. Try it on your own text.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='1' y='4' width='8' height='12' rx='1.5' fill='%23dafa9c'/%3E%3Crect x='11' y='4' width='8' height='12' rx='1.5' fill='%23ffffff'/%3E%3Crect width='20' height='20' fill='%230f0f0f' opacity='0'/%3E%3C/svg%3E">
+<style>
+/* tokforge. One shape runs the page: the token, a flat block of text that sits edge to edge with
+   its neighbours. It is the hero's folders and their tabs, every button, the list bullets, the bar
+   that forges a word, and the blocks of the closing wordmark. */
+:root {
+  --bg: #0f0f0f;
+  --surface: #1a1a1a;
+  --surface-2: #262626;
+  --ink: #ffffff;
+  --muted: #a3a3a3;
+  --accent: #dafa9c;
+  --accent-ink: #0f0f0f;
+  --paper: #ffffff;
+  --paper-ink: #0f0f0f;
+  --paper-muted: #575757;
+  --paper-step: #f0f0ec;
+  --paper-step-2: #e4e4de;
+  --tok-a: #dafa9c;
+  --tok-b: #e4e4de;
+
+  --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);
+  --step-body: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem);
+  --step-lead: clamp(1.25rem, 1.1rem + 0.7vw, 1.625rem);
+  --step-head: clamp(2rem, 1.3rem + 3.2vw, 4rem);
+  --step-display: clamp(4.5rem, 10vw, 10rem);
+
+  --margin: clamp(16px, 3.2vw, 48px);
+  --gap: 8px;
+  --r: 4px;               /* the token's corner, used on every block on the page */
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --font: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 var(--step-body)/1.5 var(--font); font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.paper :focus-visible, .lime :focus-visible { outline-color: var(--paper-ink); }
+::selection { background: var(--accent); color: var(--accent-ink); }
+.num { font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap { padding-left: var(--margin); padding-right: var(--margin); }
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.04em; line-height: 0.92; margin: 0; }
+h2 { font-size: var(--step-head); }
+p { margin: 0; }
+
+/* The token block: the page's one shape. */
+.block {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5em;
+  border: 0; border-radius: var(--r); cursor: pointer; text-decoration: none; white-space: nowrap;
+  height: 52px; padding: 0 22px; font-weight: 500; font-size: var(--step-body);
+  transition: transform .18s var(--ease), background-color .18s var(--ease), color .18s var(--ease);
+}
+.block:hover { transform: translateY(-2px); }
+.block:active { transform: translateY(1px); }
+.block-accent { background: var(--accent); color: var(--accent-ink); }
+.block-accent:hover { background: #e6ffb8; }
+.block-ink { background: var(--paper-ink); color: var(--paper); }
+.block-ink:hover { background: #2b2b2b; }
+.block-step { background: var(--paper-step-2); color: var(--paper-ink); }
+.block-step:hover { background: #d6d6ce; }
+.block-dark { background: var(--surface-2); color: var(--ink); }
+.block-dark:hover { background: #333; }
+/* A bullet is a token at text size. */
+.bullets { list-style: none; padding: 0; margin: 0; }
+.bullets li { position: relative; padding-left: 26px; }
+.bullets li::before { content: ""; position: absolute; left: 0; top: .5em; width: 14px; height: .62em; border-radius: 2px; background: currentColor; opacity: .9; }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; min-height: 100svh; overflow: hidden; display: flex; flex-direction: column; }
+.topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 72px; }
+.topbar .right { justify-self: end; display: flex; gap: 24px; font-size: var(--step-small); }
+.topbar a { text-decoration: none; color: var(--muted); transition: color .15s; }
+.topbar a:hover { color: var(--ink); }
+.wordmark { display: inline-flex; gap: 3px; text-decoration: none; font-weight: 600; letter-spacing: -0.02em; font-size: var(--step-body); }
+.wordmark span { padding: 2px 6px 3px; border-radius: 3px; color: var(--accent-ink); }
+.wordmark span:first-child { background: var(--accent); }
+.wordmark span:last-child { background: var(--paper); }
+
+.hero-copy { text-align: center; padding-top: clamp(28px, 5vh, 64px); }
+.forge {
+  display: inline-flex; gap: .05em; font-size: var(--step-display); font-weight: 600;
+  letter-spacing: -0.045em; line-height: 1; justify-content: center;
+}
+.forge .p {
+  display: inline-block; padding: .02em .08em .1em; border-radius: .045em;
+  background: var(--surface-2); color: var(--ink);
+  transition: background-color .45s var(--ease), color .45s var(--ease), transform .45s var(--ease);
+}
+.forge .p.hot { background: var(--accent); color: var(--accent-ink); transform: translateY(-.04em); }
+.forge.done .p:nth-child(1) { background: var(--accent); color: var(--accent-ink); transform: none; }
+.forge.done .p:nth-child(2) { background: var(--paper); color: var(--paper-ink); transform: none; }
+.forge.done .p:nth-child(3) { background: var(--surface-2); color: var(--ink); }
+.forge-note { margin-top: 18px; color: var(--muted); font-size: var(--step-small); min-height: 1.5em; }
+.forge-note b { color: var(--ink); font-weight: 500; }
+.hero .lead { font-size: var(--step-lead); line-height: 1.35; max-width: 34ch; margin: 22px auto 0; }
+
+/* The folder stack: five bands, each one a section, the front one open. */
+.stack { position: relative; flex: 1; min-height: 300px; margin-top: clamp(36px, 7vh, 80px); }
+.folder {
+  position: absolute; left: 7%; right: 7%; bottom: -2px; display: block; text-decoration: none;
+  border-radius: var(--r) var(--r) 0 0; transition: transform .35s var(--ease);
+}
+.folder .tab {
+  position: absolute; bottom: 100%; height: 40px; padding: 0 22px; display: flex; align-items: center;
+  font-size: var(--step-body); font-weight: 500; border-radius: var(--r) var(--r) 0 0; background: inherit; color: inherit;
+}
+a.folder:hover { transform: translateY(-10px); }
+.f1 { top: 0;    background: #3a3a3a; color: var(--ink); }
+.f2 { top: 64px;  background: var(--paper-step); color: var(--paper-ink); }
+.f3 { top: 128px; background: var(--surface-2); color: var(--ink); }
+.f4 { top: 192px; background: var(--paper); color: var(--paper-ink); }
+.f5 { top: 256px; background: var(--accent); color: var(--accent-ink); }
+.f1 .tab { left: 70%; } .f2 .tab { left: 47%; } .f3 .tab { left: 24%; } .f4 .tab { left: 82%; } .f5 .tab { left: 0; }
+.f5 .front { position: absolute; left: 32px; right: 32px; top: 32px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.f5 .front p { font-size: var(--step-body); max-width: 40ch; margin-left: auto; }
+
+/* ---------- Playground: the inside of the open folder ---------- */
+.folder-open { background: var(--accent); color: var(--accent-ink); margin: 0 7%; border-radius: 0 0 var(--r) var(--r); }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 8px 32px 40px; min-height: 88svh; }
+.plate {
+  background: var(--paper); color: var(--paper-ink); border-radius: var(--r); aspect-ratio: 1 / 1;
+  display: flex; flex-direction: column; padding: 22px; min-height: 0; align-self: center; width: 100%;
+}
+.plate textarea {
+  border: 0; background: var(--paper-step); border-radius: var(--r); padding: 14px 16px; resize: none;
+  height: 34%; min-height: 120px; font-size: var(--step-body); line-height: 1.5; color: var(--paper-ink);
+}
+.plate textarea:focus { outline: 2px solid var(--paper-ink); outline-offset: 0; }
+.samples { display: flex; gap: 6px; margin: 10px 0 14px; flex-wrap: wrap; }
+.chip {
+  border: 0; border-radius: 3px; background: var(--paper-step); padding: 5px 10px; font-size: var(--step-small); cursor: pointer;
+  transition: background-color .15s, transform .15s var(--ease);
+}
+.chip:hover { background: var(--paper-step-2); transform: translateY(-1px); }
+.chip[aria-pressed="true"] { background: var(--paper-ink); color: var(--paper); }
+.strip {
+  flex: 1; min-height: 0; overflow: auto; font-size: var(--step-body); line-height: 2.05; white-space: pre-wrap; word-break: break-word;
+}
+.strip .t { border-radius: 3px; padding: 2px 0; margin-right: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; cursor: default; transition: background-color .12s; }
+.strip .t:nth-child(odd of .t) { background: var(--tok-a); }
+.strip .t:nth-child(even of .t) { background: var(--tok-b); }
+.strip .t:hover, .strip .t.on { background: var(--paper-ink); color: var(--paper); }
+.strip .ws { color: #8a8a80; font-style: normal; }
+.strip .cut { display: inline-block; width: 6px; height: 1.25em; vertical-align: -0.22em; background: var(--paper-ink); border-radius: 2px; margin: 0 6px 0 3px; }
+.strip .empty, .strip .error { color: var(--paper-muted); white-space: normal; line-height: 1.5; }
+.strip .error { color: #9b1c1c; }
+.plate-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: var(--step-small); color: var(--paper-muted); flex-wrap: wrap; }
+.plate-foot label { display: inline-flex; align-items: center; gap: 8px; color: var(--paper-ink); cursor: pointer; }
+.plate-foot input[type="number"] {
+  width: 64px; height: 32px; border: 0; border-radius: 3px; background: var(--paper-step); padding: 0 8px; text-align: right;
+}
+.toggle { width: 34px; height: 20px; border-radius: 3px; background: var(--paper-step-2); position: relative; border: 0; cursor: pointer; transition: background-color .15s; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 2px; background: var(--paper); transition: transform .2s var(--ease); }
+.toggle[aria-checked="true"] { background: var(--paper-ink); }
+.toggle[aria-checked="true"]::after { transform: translateX(14px); }
+.inspect { min-height: 1.5em; color: var(--paper-muted); font-size: var(--step-small); margin-top: 8px; }
+.inspect b { color: var(--paper-ink); font-weight: 500; }
+
+.side { display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 22px 0; }
+.enc-tabs { display: flex; gap: 22px; font-size: var(--step-body); }
+.enc-tabs button { border: 0; background: none; padding: 0 0 4px; cursor: pointer; color: rgba(15,15,15,.62); font-weight: 500; border-bottom: 3px solid transparent; transition: color .15s, border-color .15s; }
+.enc-tabs button:hover { color: var(--accent-ink); }
+.enc-tabs button[aria-pressed="true"] { color: var(--accent-ink); border-color: var(--accent-ink); }
+.side h2 { font-size: var(--step-head); }
+.count { display: flex; align-items: baseline; gap: 12px; margin-top: 28px; }
+.count .n { font-size: var(--step-head); font-weight: 600; letter-spacing: -0.04em; line-height: 1; }
+.count .u { font-size: var(--step-lead); }
+.finding { margin-top: 10px; max-width: 40ch; min-height: 3em; }
+.compare { margin-top: 22px; display: grid; gap: 10px; }
+.compare .row { display: grid; grid-template-columns: 7.2em 3.6em 1fr; align-items: center; gap: 14px; font-size: var(--step-small); }
+.compare .row .k { text-align: right; }
+.compare .bar { height: 14px; border-radius: 2px; background: rgba(15,15,15,.12); overflow: hidden; }
+.compare .bar i { display: block; height: 100%; background: var(--accent-ink); border-radius: 2px; transform-origin: left; transition: transform .5s var(--ease); }
+.compare .row.sel { font-weight: 600; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.actions .block { height: 72px; justify-content: flex-start; padding: 0 22px; font-size: var(--step-body); }
+.actions .block small { font-size: var(--step-small); opacity: .7; font-weight: 400; margin-left: auto; }
+
+/* ---------- Speed: stepped figure tiles, then the benchmark index ---------- */
+.paper { background: var(--paper); color: var(--paper-ink); }
+.speed { padding-top: clamp(88px, 12vh, 128px); padding-bottom: clamp(88px, 12vh, 128px); }
+.tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
+.tile { border-radius: var(--r); padding: 28px; display: flex; flex-direction: column; justify-content: space-between; clip-path: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%); }
+.tile .fig { font-size: var(--step-head); font-weight: 600; letter-spacing: -0.04em; line-height: .95; }
+.tile p { max-width: 30ch; }
+.t1 { grid-column: 1 / 7; height: 70vh; min-height: 440px; background: var(--accent); }
+.t1 .fig { font-size: var(--step-display); }
+.right-col { grid-column: 7 / 13; display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); align-items: start; }
+.right-col h2 { grid-column: 1 / 3; padding: 4px 0 0; height: 14vh; min-height: 96px; font-size: var(--step-head); }
+.t2 { height: 44vh; min-height: 300px; background: var(--paper-ink); color: var(--paper); }
+.t3 { height: 34vh; min-height: 250px; margin-top: 12vh; background: var(--paper-step-2); }
+.t2 .fig { color: var(--accent); }
+
+.index { display: grid; grid-template-columns: 7fr 5fr; gap: 48px; margin-top: clamp(96px, 12vh, 160px); align-items: start; }
+.index h3 { font-size: var(--step-head); margin-bottom: 18px; }
+.index .intro { color: var(--paper-muted); max-width: 52ch; margin-bottom: 28px; }
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows button {
+  width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: baseline; text-align: left;
+  border: 0; background: none; padding: 14px 0; cursor: pointer; font-size: var(--step-lead); line-height: 1.2;
+  transition: opacity .24s var(--ease), padding-left .24s var(--ease);
+}
+.rows button .what { font-weight: 500; letter-spacing: -0.02em; }
+.rows button .what small { font-size: var(--step-small); font-weight: 400; color: var(--paper-muted); margin-left: 8px; letter-spacing: 0; }
+.rows button .x { font-weight: 600; }
+.rows.dim button { opacity: .38; }
+.rows.dim button.on { opacity: 1; padding-left: 14px; }
+.rows .inline-preview { display: none; }
+.frame { position: sticky; top: 24px; background: var(--paper-step); border-radius: var(--r); padding: 28px; min-height: 420px; display: flex; flex-direction: column; }
+.frame .cap { font-size: var(--step-small); color: var(--paper-muted); }
+.frame .title { font-size: var(--step-lead); font-weight: 500; margin: 4px 0 28px; letter-spacing: -0.02em; }
+.bars { display: grid; gap: 22px; margin-top: auto; }
+.bars .b { display: grid; gap: 6px; }
+.bars .b .lab { display: flex; justify-content: space-between; font-size: var(--step-small); }
+.bars .b .track { height: 36px; background: var(--paper); border-radius: var(--r); overflow: hidden; }
+.bars .b .track i { display: block; height: 100%; border-radius: var(--r); background: var(--paper-ink); transform-origin: left; transition: transform .24s var(--ease); }
+.bars .b.us .track i { background: var(--paper-ink); }
+.bars .b.us .lab { font-weight: 600; }
+.bars .b:not(.us) .track i { background: #b9b9b0; }
+.frame .note { margin-top: 22px; font-size: var(--step-small); color: var(--paper-muted); }
+
+/* ---------- How it works: the stages as one bar ---------- */
+.how { padding-top: clamp(88px, 12vh, 128px); padding-bottom: clamp(88px, 12vh, 128px); background: var(--bg); }
+.how h2 { font-size: var(--step-head); margin-bottom: 40px; }
+.how-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 20px; }
+.how-controls .label { color: var(--muted); margin-right: 6px; font-size: var(--step-small); }
+.how-controls .chip { background: var(--surface-2); color: var(--ink); font-size: var(--step-small); padding: 7px 12px; }
+.how-controls .chip:hover { background: #333; }
+.how-controls .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.how-controls .spacer { flex: 1; }
+.bar-stage { display: flex; gap: 6px; height: 22vh; min-height: 150px; }
+.seg {
+  flex-grow: 1; flex-basis: 0; border-radius: var(--r); background: var(--surface-2); color: var(--ink); min-width: 0;
+  padding: 16px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;
+  transition: flex-grow .5s var(--ease), background-color .4s var(--ease), color .4s var(--ease);
+}
+.seg .piece { font-size: var(--step-lead); font-weight: 600; letter-spacing: -0.03em; line-height: 1; white-space: pre; }
+.seg .id { font-size: var(--step-small); color: var(--muted); }
+.seg.fresh { background: var(--accent); color: var(--accent-ink); }
+.seg.fresh .id { color: rgba(15,15,15,.7); }
+.seg.final { background: var(--paper); color: var(--paper-ink); }
+.seg.final .id { color: var(--paper-muted); }
+.how-under { display: grid; grid-template-columns: 7fr 5fr; gap: 48px; margin-top: 28px; align-items: start; }
+.step-line { font-size: var(--step-lead); line-height: 1.35; min-height: 2.8em; }
+.step-line b { color: var(--accent); font-weight: 500; }
+.scrub { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+.scrub input[type="range"] { flex: 1; accent-color: var(--accent); height: 28px; }
+.scrub .block { height: 44px; padding: 0 16px; }
+.how-text { color: var(--muted); }
+.how-text p + p { margin-top: 14px; }
+.how-text b { color: var(--ink); font-weight: 500; }
+
+/* The engraving, tinted in the accent and cut into blocks like a word into tokens. */
+.engraving { margin: 0 0 clamp(80px, 12vh, 140px); }
+.cutband { position: relative; height: 62vh; min-height: 360px; background: var(--accent); border-radius: var(--r); overflow: hidden; }
+.cutband img { width: 100%; height: 115%; object-fit: cover; object-position: 50% 42%; display: block; mix-blend-mode: multiply; filter: grayscale(1) contrast(1.1); will-change: transform; }
+.cutband .gap { position: absolute; top: 0; bottom: 0; width: 6px; background: var(--bg); }
+.engraving figcaption { display: grid; grid-template-columns: 7fr 5fr; gap: 48px; margin-top: 22px; align-items: start; }
+.engraving .lead-in { font-size: var(--step-lead); line-height: 1.3; max-width: 30ch; }
+.engraving figcaption span { color: var(--muted); font-size: var(--step-small); }
+
+/* ---------- Correctness: large names on tiles ---------- */
+.proof { padding-top: clamp(88px, 12vh, 128px); padding-bottom: clamp(88px, 12vh, 128px); }
+.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
+.cell { background: var(--paper-step); border-radius: var(--r); padding: 24px; aspect-ratio: 3 / 2; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px; }
+.cell .name { font-size: var(--step-lead); font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+.cell p { font-size: var(--step-small); color: var(--paper-muted); max-width: 30ch; }
+.cell.head { grid-column: span 2; aspect-ratio: auto; background: var(--accent); }
+.cell.head h2 { font-size: var(--step-head); }
+.cell.head p { color: var(--accent-ink); font-size: var(--step-body); max-width: 44ch; }
+
+/* ---------- Install ---------- */
+.install { padding-top: clamp(88px, 12vh, 128px); padding-bottom: clamp(72px, 10vh, 120px); }
+.install-grid { display: grid; grid-template-columns: 6fr 6fr; gap: 48px; align-items: start; }
+.install h2 { font-size: var(--step-head); }
+.cmd { display: flex; gap: 6px; margin-top: 36px; max-width: 560px; }
+.cmd code { flex: 1; display: flex; align-items: center; height: 64px; padding: 0 20px; border-radius: var(--r); background: var(--surface-2); font: 500 var(--step-lead)/1 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.cmd .block { height: 64px; min-width: 112px; }
+.install .after { color: var(--muted); margin-top: 16px; max-width: 46ch; font-size: var(--step-small); }
+pre.code {
+  margin: 0; background: var(--surface); border-radius: var(--r); padding: 28px; overflow: auto;
+  font: 400 var(--step-small)/1.75 ui-monospace, "Cascadia Mono", Consolas, monospace; color: #e8e8e8;
+}
+pre.code .c { color: #8f8f8f; }
+pre.code .s { color: var(--accent); }
+.install .bullets { margin-top: 28px; display: grid; gap: 10px; }
+.install .bullets li::before { background: var(--accent); }
+
+/* ---------- Footer: the wordmark built from blocks ---------- */
+footer { padding-top: 24px; padding-bottom: 32px; }
+.mark { display: flex; gap: 4px; align-items: flex-end; height: 34svh; min-height: 200px; }
+.mark span {
+  flex: 1; display: flex; align-items: flex-end; justify-content: center; border-radius: var(--r);
+  font-weight: 600; font-size: var(--step-display); line-height: .8; letter-spacing: -0.04em; padding-bottom: .06em; overflow: hidden;
+  color: var(--bg); background: var(--paper);
+}
+.mark span.tk { background: var(--accent); }
+.foot { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; margin-top: 56px; font-size: var(--step-small); }
+.foot .col { grid-column: span 2; display: grid; gap: 8px; align-content: start; }
+.foot .col b { font-weight: 500; color: var(--ink); margin-bottom: 4px; }
+.foot .col a { color: var(--muted); text-decoration: none; transition: color .15s; }
+.foot .col a:hover { color: var(--ink); }
+.foot .who { grid-column: 9 / 13; color: var(--muted); display: grid; gap: 8px; align-content: start; }
+.foot .who b { color: var(--ink); font-weight: 500; }
+.last { display: flex; justify-content: space-between; align-items: center; margin-top: 56px; color: var(--muted); font-size: var(--step-small); }
+.last .block { height: 40px; padding: 0 16px; font-size: var(--step-small); }
+
+/* ---------- Entrances: content is visible without script; script opts in. ---------- */
+.js .rise { opacity: 0; transform: translateY(24px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.js .rise.in { opacity: 1; transform: none; }
+/* The folders slide up into their stack once, back to front, as the page opens. */
+@keyframes file-in { from { transform: translateY(120px); } to { transform: none; } }
+.js .folder { animation: file-in .9s var(--ease) both; }
+.js .f1 { animation-delay: .05s; } .js .f2 { animation-delay: .12s; } .js .f3 { animation-delay: .19s; } .js .f4 { animation-delay: .26s; } .js .f5 { animation-delay: .33s; }
+.js .hero .lead, .js .forge-note { animation: fade-up .8s var(--ease) both .2s; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+/* The closing wordmark's blocks rise to their heights. */
+.js .mark span { transform: scaleY(.2); transform-origin: bottom; transition: transform .9s var(--ease); }
+.js .mark.in span { transform: none; }
+.js .mark.in span:nth-child(2) { transition-delay: .05s; } .js .mark.in span:nth-child(3) { transition-delay: .1s; }
+.js .mark.in span:nth-child(4) { transition-delay: .15s; } .js .mark.in span:nth-child(5) { transition-delay: .2s; }
+.js .mark.in span:nth-child(6) { transition-delay: .25s; } .js .mark.in span:nth-child(7) { transition-delay: .3s; }
+.js .mark.in span:nth-child(8) { transition-delay: .35s; }
+
+/* ---------- Tablet and phone ---------- */
+@media (max-width: 1000px) {
+  .split { grid-template-columns: 1fr; padding: 8px 20px 32px; }
+  .plate { aspect-ratio: auto; height: 640px; }
+  .tiles { grid-template-columns: 1fr; }
+  .t1, .right-col { grid-column: auto; }
+  .t1 { height: 56vw; min-height: 320px; }
+  .right-col h2 { height: auto; padding: 24px 0 8px; }
+  .index, .how-under, .install-grid { grid-template-columns: 1fr; }
+  .frame { position: static; min-height: 0; }
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .foot .col { grid-column: span 4; }
+  .foot .who { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .topbar { grid-template-columns: auto 1fr; }
+  .topbar > :first-child { display: none; }
+  .topbar .wordmark { justify-self: start; }
+  .topbar .right { gap: 16px; }
+  .hero-copy { padding-top: 56px; }
+  .forge { font-size: 15.5vw; }
+  .hero .lead { font-size: 19px; max-width: 30ch; }
+  .stack { min-height: 330px; }
+  .folder { left: 0; right: 0; }
+  .f2 { top: 52px; } .f3 { top: 104px; } .f4 { top: 156px; } .f5 { top: 208px; }
+  .folder .tab { height: 32px; font-size: var(--step-small); padding: 0 14px; }
+  .f1 .tab { left: auto; right: 0; } .f2 .tab { left: 38%; } .f3 .tab { left: 4%; } .f4 .tab { left: auto; right: 8%; } .f5 .tab { left: 0; }
+  .f5 .front { left: 16px; right: 16px; top: 20px; }
+  .f5 .front .block { width: 100%; }
+  .f5 .front p { display: none; }
+  .folder-open { margin: 0; }
+  .split { padding: 4px 16px 28px; gap: 24px; }
+  .plate { height: 600px; padding: 16px; }
+  .actions { grid-template-columns: 1fr; }
+  .actions .block { height: 60px; }
+  .tiles { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .right-col { display: contents; }
+  .right-col h2 { grid-column: 1 / -1; order: 1; padding: 0 0 12px; }
+  .t1 { grid-column: 1 / -1; order: 2; }
+  .t2 { order: 3; } .t3 { order: 4; }
+  .t2 { height: auto; min-height: 220px; } .t3 { height: auto; min-height: 220px; margin-top: 32px; }
+  .tile { padding: 20px; }
+  .t2 .fig, .t3 .fig { font-size: 11vw; }
+  .t1 .fig { font-size: 15vw; }
+  .rows .inline-preview { display: block; font-size: var(--step-small); color: var(--paper-muted); margin-top: 4px; }
+  .rows button { grid-template-columns: 1fr auto; }
+  .frame { display: none; }
+  .bar-stage { flex-direction: column; height: auto; min-height: 0; }
+  .cutband { height: 46svh; min-height: 260px; }
+  .engraving figcaption { grid-template-columns: 1fr; gap: 12px; }
+  .seg { min-height: 72px; flex-basis: auto; }
+  .board { gap: 6px; }
+  .cell { min-height: 160px; aspect-ratio: auto; padding: 18px; }
+  .cell .name { font-size: var(--step-body); }
+  .cell.head { grid-column: 1 / -1; min-height: 0; }
+  .cmd code { font-size: var(--step-body); height: 56px; padding: 0 14px; }
+  .cmd .block { height: 56px; min-width: 84px; }
+  .mark { height: 22svh; min-height: 130px; gap: 3px; }
+  .mark span { font-size: 15vw; }
+  .foot .col { grid-column: span 6; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  .js .rise { opacity: 1; transform: none; }
+  .js .mark span { transform: none; }
+  .cutband img { transform: none !important; }
+}
+</style>
+<script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+
+<header class="hero wrap" id="top">
+  <nav class="topbar" aria-label="Site">
+    <span aria-hidden="true"></span>
+    <a class="wordmark" href="#top" aria-label="tokforge home"><span>tok</span><span>forge</span></a>
+    <div class="right"><a href="https://pypi.org/project/tokforge/">PyPI</a><a href="https://github.com/zainulwahaj/tokforge">GitHub</a></div>
+  </nav>
+
+  <div class="hero-copy">
+    <h1 class="forge" id="forge" aria-label="tokforge"><span class="p">tok</span><span class="p">forge</span></h1>
+    <p class="forge-note" id="forge-note">In GPT-4o this name is two tokens: <b>tok</b> 43,620 and <b>forge</b> 43,555.</p>
+    <p class="lead">A BPE tokenizer written in Rust. Same token ids as tiktoken for GPT-4o, GPT-4 and GPT-2, up to 4.6 times faster.</p>
+  </div>
+
+  <div class="stack" aria-label="Sections">
+    <a class="folder f1" href="#install"><span class="tab">Install</span></a>
+    <a class="folder f2" href="#proof"><span class="tab">Correctness</span></a>
+    <a class="folder f3" href="#how"><span class="tab">How it works</span></a>
+    <a class="folder f4" href="#speed"><span class="tab">Speed</span></a>
+    <div class="folder f5">
+      <a class="tab" href="#playground" style="text-decoration:none">Playground</a>
+      <div class="front">
+        <button class="block block-ink" type="button" data-copy="pip install tokforge">pip install tokforge <span aria-hidden="true">&#8599;</span></button>
+        <p>Or paste your own text below and watch it split, live, on the same Rust core.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="folder-open" id="playground" aria-labelledby="h-play">
+    <div class="split">
+      <div class="plate rise" data-ui>
+        <label class="sr" for="text">Text to tokenize</label>
+        <textarea id="text" spellcheck="false"></textarea>
+        <div class="samples" id="samples" role="group" aria-label="Sample texts"></div>
+        <div class="strip" id="strip" aria-live="polite"></div>
+        <p class="inspect" id="inspect">Point at a token to see its id.</p>
+        <div class="plate-foot">
+          <label><button class="toggle" id="cut-toggle" type="button" role="switch" aria-checked="false" aria-label="Show chunks"></button> Cut into chunks of</label>
+          <span><input id="budget" type="number" min="1" max="100000" value="12" inputmode="numeric" aria-label="Tokens per chunk"> tokens</span>
+          <span class="num" id="size"></span>
+        </div>
+      </div>
+
+      <div class="side rise">
+        <div class="enc-tabs" role="group" aria-label="Encoding" id="encs">
+          <button type="button" data-enc="o200k_base" aria-pressed="true">GPT-4o</button>
+          <button type="button" data-enc="cl100k_base" aria-pressed="false">GPT-4</button>
+          <button type="button" data-enc="gpt2" aria-pressed="false">GPT-2</button>
+        </div>
+        <div>
+          <h2 id="h-play">Try it on your own text</h2>
+          <div class="count"><span class="n num" id="count">0</span><span class="u">tokens</span></div>
+          <p class="finding" id="finding"></p>
+          <div class="compare" id="compare" aria-label="Same text in each encoding"></div>
+        </div>
+        <div class="actions">
+          <button class="block block-ink" type="button" data-copy="pip install tokforge">Copy install command <small>pip</small></button>
+          <a class="block block-step" href="https://github.com/zainulwahaj/tokforge">Read the source <small>GitHub</small></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="paper speed wrap" id="speed" aria-labelledby="h-speed">
+    <div class="tiles">
+      <div class="tile t1 rise">
+        <span class="fig num">4.6x</span>
+        <p>tiktoken's speed on GPT-4's vocabulary, one thread, on this project's own Rust source. The hardest case, mixed scripts and emoji, is still 1.4x.</p>
+      </div>
+      <div class="right-col">
+        <h2 id="h-speed" class="rise">Faster than tiktoken</h2>
+        <div class="tile t2 rise"><span class="fig num">59 MB/s</span><p>GPT-4 on English, batched across 8 threads.</p></div>
+        <div class="tile t3 rise"><span class="fig num">29x</span><p>Hugging Face tokenizers' speed on GPT-2, one thread.</p></div>
+      </div>
+    </div>
+
+    <div class="index">
+      <div>
+        <h3 class="rise">Every measured case</h3>
+        <p class="intro rise">Median of nine runs on a 4-core laptop. All three libraries load the same vocabulary, and the benchmark refuses to run unless they return identical ids for every input.</p>
+        <ul class="rows" id="rows"></ul>
+      </div>
+      <div class="frame rise" id="frame" data-ui aria-live="polite">
+        <span class="cap" id="frame-cap"></span>
+        <span class="title" id="frame-title"></span>
+        <div class="bars" id="frame-bars"></div>
+        <p class="note">MB of UTF-8 input per second, one thread. Longer is faster.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="how wrap" id="how" aria-labelledby="h-how">
+    <figure class="engraving rise">
+      <div class="cutband">
+        <img id="engraving" src="assets/forge-engraving.jpg" width="1177" height="786" alt="Engraving of a blacksmith at his anvil, hammer in hand, with a second worker at the bellows behind him and a factory chimney beyond the fence." decoding="async" fetchpriority="low">
+        <span class="gap" style="left:21%"></span><span class="gap" style="left:34%"></span><span class="gap" style="left:58%"></span><span class="gap" style="left:71%"></span><span class="gap" style="left:86%"></span>
+      </div>
+      <figcaption><p class="lead-in">A forge works raw metal into parts of a known shape. A tokenizer does the same to text.</p><span>Banknote vignette with a blacksmith and forge, Asher Brown Durand, about 1830. The Metropolitan Museum of Art, public domain.</span></figcaption>
+    </figure>
+    <h2 id="h-how" class="rise">From bytes to tokens</h2>
+    <div class="how-controls rise" role="group" aria-label="Word and encoding">
+      <span class="label">Word</span>
+      <span id="words"></span>
+      <span class="spacer"></span>
+      <span class="label">Encoding</span>
+      <span id="how-encs"></span>
+    </div>
+    <div class="bar-stage rise" id="bar" data-ui aria-hidden="true"></div>
+    <div class="how-under">
+      <div>
+        <p class="step-line" id="step-line" aria-live="polite"></p>
+        <div class="scrub">
+          <button class="block block-accent" type="button" id="replay">Forge it</button>
+          <label class="sr" for="step">Merge step</label>
+          <input type="range" id="step" min="0" max="10" value="0">
+          <span class="num" id="step-count" style="min-width:4.5em;text-align:right;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="how-text rise">
+        <p>Byte-pair encoding starts from single bytes and keeps merging the neighbouring pair with the <b>lowest rank</b> in the vocabulary's merge list, until no pair is left to merge. What remains are the tokens.</p>
+        <p>tokforge does this in Rust without a regex engine: a <b>hand-written pre-tokenizer</b> splits text into words, a <b>sharded cache</b> answers words it has seen, and the merges run on raw bytes in the same order as the reference.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="paper proof wrap" id="proof" aria-labelledby="h-proof">
+    <div class="board">
+      <div class="cell head rise">
+        <h2 id="h-proof">Checked against the originals</h2>
+        <p>Speed is only worth having if the ids are right. Every result is compared with the implementation it imitates.</p>
+      </div>
+      <div class="cell rise"><span class="name">tiktoken</span><p>Golden ids for GPT-2, GPT-4 and GPT-4o on 15 hard corpus files match exactly.</p></div>
+      <div class="cell rise"><span class="name">55,259,448</span><p>Differential inputs run against Hugging Face tokenizers. Zero mismatches.</p></div>
+      <div class="cell rise"><span class="name">sentencepiece</span><p>Independent goldens for XLM-R, with every divergence written down.</p></div>
+      <div class="cell rise"><span class="name">transformers</span><p>Google's original BERT tokenizer as the oracle for WordPiece.</p></div>
+      <div class="cell rise"><span class="name">Special tokens</span><p>Treated as plain text by default, so a prompt can never smuggle in an end-of-text id.</p></div>
+      <div class="cell rise"><span class="name">SHA-256</span><p>Every response names the exact tokenizer file it used.</p></div>
+    </div>
+  </section>
+
+  <section class="install wrap" id="install" aria-labelledby="h-install">
+    <div class="install-grid">
+      <div>
+        <h2 id="h-install" class="rise">One line to install</h2>
+        <div class="cmd rise">
+          <code>pip install tokforge</code>
+          <button class="block block-accent" type="button" data-copy="pip install tokforge">Copy</button>
+        </div>
+        <p class="after rise">Wheels for Linux, macOS and Windows, Python 3.9 and later. No Rust toolchain needed.</p>
+        <ul class="bullets rise">
+          <li>Any Hugging Face <code style="font:inherit">tokenizer.json</code> loads; GPT-style vocabularies run on the fast core.</li>
+          <li>Batches release the GIL and use every core.</li>
+          <li>Also a CLI, an HTTP server and a streaming JSONL pipeline.</li>
+        </ul>
+      </div>
+      <pre class="code rise" data-ui><code><span class="c"># same ids as tiktoken.get_encoding("o200k_base")</span>
+import tokforge
+
+tok = tokforge.Tokenizer.from_file(<span class="s">"o200k_base.tokenizer.json"</span>)
+
+tok.encode(<span class="s">"Hello from Lahore"</span>)    <span class="c"># [13225, 591, 158256]</span>
+tok.count(<span class="s">"Hello from Lahore"</span>)     <span class="c"># 3</span>
+tok.encode_batch(docs)             <span class="c"># every core, GIL released</span>
+tok.chunk(report, max_tokens=<span class="s">512</span>)  <span class="c"># slices that join back exactly</span></code></pre>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap" aria-label="Footer">
+  <div class="mark" id="mark" aria-hidden="true">
+    <span class="tk" style="height:78%">t</span><span class="tk" style="height:100%">o</span><span class="tk" style="height:88%">k</span>
+    <span style="height:70%">f</span><span style="height:94%">o</span><span style="height:62%">r</span><span style="height:84%">g</span><span style="height:74%">e</span>
+  </div>
+  <div class="foot">
+    <div class="col rise"><b>Project</b><a href="https://github.com/zainulwahaj/tokforge">Source</a><a href="https://pypi.org/project/tokforge/">PyPI package</a><a href="https://github.com/zainulwahaj/tokforge/releases">Releases</a></div>
+    <div class="col rise"><b>Read</b><a href="https://github.com/zainulwahaj/tokforge#readme">README</a><a href="https://github.com/zainulwahaj/tokforge/blob/main/PERFORMANCE.md">Benchmarks</a><a href="https://github.com/zainulwahaj/tokforge/tree/main/demo">This page's source</a></div>
+    <div class="col rise"><b>Author</b><a href="https://zainulwahaj.dev">zainulwahaj.dev</a><a href="https://github.com/zainulwahaj">GitHub profile</a><a href="https://linkedin.com/in/zain-ul-wahaj">LinkedIn</a></div>
+    <div class="who rise"><b>Built by Syed Zain-ul-Wahaj in Islamabad.</b><span>MIT or Apache-2.0. The demo runs the released 0.1.0 core on a small VPS, 60 KB of text per request.</span></div>
+  </div>
+  <div class="last"><span>&copy; 2026 Syed Zain-ul-Wahaj</span><a class="block block-dark" href="#top">Back to top</a></div>
+</footer>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString("en-US");
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const utf8 = new TextEncoder();
+const decoder = new TextDecoder();
+const LIMIT = 60000;
+const ENC = [
+  { id: "o200k_base", label: "GPT-4o" },
+  { id: "cl100k_base", label: "GPT-4" },
+  { id: "gpt2", label: "GPT-2" },
+];
+const label = (id) => ENC.find((e) => e.id === id).label;
+
+/* Real merge sequences, computed offline from each vocabulary's merge list: the starting bytes,
+   then [rank, position] for every merge in the order BPE applies them, then the final ids. */
+const MERGES = {"o200k_base":{"tokforge":{"s":["t","o","k","f","o","r","g","e"],"m":[[11,4],[269,1],[428,4],[1682,2],[43299,2],[43364,0]],"ids":[43620,43555]},"tokenization":{"s":["t","o","k","e","n","i","z","a","t","i","o","n"],"m":[[6,3],[7,9],[10,6],[38,7],[131,6],[226,4],[269,1],[2232,1],[2604,2],[10090,0]],"ids":[10346,2860]},"unbelievable":{"s":["u","n","b","e","l","i","e","v","a","b","l","e"],"m":[[26,10],[40,3],[117,0],[122,6],[140,3],[306,5],[9624,1],[15555,2],[45538,2]],"ids":[373,9880,45794]},"Lahore":{"s":["L","a","h","o","r","e"],"m":[[8,4],[254,3],[593,1]],"ids":[43,849,510]}},"cl100k_base":{"tokforge":{"s":["t","o","k","f","o","r","g","e"],"m":[[13,4],[308,1],[457,4],[1744,2],[24825,2],[30438,0]],"ids":[30694,25081]},"tokenization":{"s":["t","o","k","e","n","i","z","a","t","i","o","n"],"m":[[7,10],[10,7],[12,3],[34,7],[111,6],[194,4],[308,1],[1457,1],[1809,2],[5707,0]],"ids":[5963,2065]},"unbelievable":{"s":["u","n","b","e","l","i","e","v","a","b","l","e"],"m":[[17,10],[45,3],[103,0],[114,6],[225,6],[392,3],[9722,1],[24438,3],[32642,1]],"ids":[359,32898,24694]},"Lahore":{"s":["L","a","h","o","r","e"],"m":[[9,4],[205,3],[1238,1]],"ids":[43,1494,461]}},"gpt2":{"tokforge":{"s":["t","o","k","f","o","r","g","e"],"m":[[17,4],[213,5],[226,1],[1384,2],[30037,2]],"ids":[83,482,30293]},"tokenization":{"s":["t","o","k","e","n","i","z","a","t","i","o","n"],"m":[[5,10],[9,7],[12,3],[39,7],[85,6],[226,1],[272,3],[1378,3],[3977,1],[29745,0]],"ids":[30001,1634]},"unbelievable":{"s":["u","n","b","e","l","i","e","v","a","b","l","e"],"m":[[37,10],[141,8],[147,0],[161,2],[238,3],[284,5],[6411,1],[10947,2]],"ids":[403,6667,11203,540]},"Lahore":{"s":["L","a","h","o","r","e"],"m":[[4,4],[126,3],[737,1]],"ids":[43,993,382]}}};
+
+/* States of a word after k merges. */
+function states(word, enc) {
+  const w = MERGES[enc][word];
+  const out = [w.s.map((t) => ({ t, fresh: false }))];
+  let parts = w.s.slice();
+  for (const [, at] of w.m) {
+    parts = parts.slice(0, at).concat([parts[at] + parts[at + 1]], parts.slice(at + 2));
+    out.push(parts.map((t, i) => ({ t, fresh: i === at })));
+  }
+  return out;
+}
+
+/* ---------- Hero: the name is forged from its bytes on load ---------- */
+(function hero() {
+  const el = $("forge");
+  const seq = states("tokforge", "o200k_base");
+  const draw = (k) => {
+    el.innerHTML = seq[k].map((p) => `<span class="p${p.fresh ? " hot" : ""}">${esc(p.t)}</span>`).join("");
+  };
+  if (reduce) { draw(seq.length - 1); el.classList.add("done"); return; }
+  let k = 0;
+  draw(0);
+  const tick = () => {
+    k += 1;
+    if (k >= seq.length) { el.classList.add("done"); el.innerHTML = el.innerHTML.replace(/ hot/g, ""); return; }
+    draw(k);
+    setTimeout(tick, k === seq.length - 1 ? 700 : 420);
+  };
+  setTimeout(tick, 650);
+})();
+
+/* ---------- Copy buttons ---------- */
+document.querySelectorAll("[data-copy]").forEach((b) => {
+  const html = b.innerHTML;
+  b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; }
+    catch { b.textContent = b.dataset.copy; }
+    setTimeout(() => (b.innerHTML = html), 1500);
+  });
+});
+
+/* ---------- Playground ---------- */
+const SAMPLES = {
+  English: "Tokenizers split text into pieces a language model has seen before. Common words stay whole, rare ones break apart, and a space usually belongs to the word after it.\n\nThat is why a prompt that looks short can still cost more than you expect.",
+  Code: "def chunk(text: str, max_tokens: int) -> list[str]:\n    pieces, start = [], 0\n    while start < len(text):\n        end = fit(text, start, max_tokens)\n        pieces.append(text[start:end])\n        start = end\n    return pieces\n",
+  "Urdu and more": "Hello from Lahore. لاہور سے سلام۔\n你好，世界。 नमस्ते दुनिया। Bonjour, ça va ?\nNewer vocabularies need far fewer tokens outside English.",
+  Numbers: "Order 48213 shipped on 2026-11-10 at 14:05. Total: $1,284.50 for 3 items. 2**31 - 1 = 2147483647.",
+};
+let enc = "o200k_base";
+let counts = {};
+let last = null;
+let cuts = null;
+let seq = 0;
+const text = $("text");
+
+async function api(e, op, body) {
+  const res = await fetch(`/api/${e}/v1/${op}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(res.status === 503 ? "The demo server is busy. Try again in a second."
+      : res.status === 413 ? "That text is over the demo's request limit."
+      : (data && data.error && data.error.message) || `Request failed (${res.status}).`);
+  }
+  return data;
+}
+
+function pieces(src, encoding) {
+  const bytes = utf8.encode(src);
+  const out = [];
+  encoding.offsets.forEach(([s, e], i) => {
+    const prev = out[out.length - 1];
+    if (prev && s < prev.end) { prev.end = Math.max(prev.end, e); prev.ids.push(encoding.ids[i]); }
+    else {
+      if (prev && s > prev.end) out.push({ start: prev.end, end: s, ids: [], gap: true });
+      out.push({ start: s, end: e, ids: [encoding.ids[i]], first: i });
+    }
+  });
+  const tail = out.length ? out[out.length - 1].end : 0;
+  if (tail < bytes.length) out.push({ start: tail, end: bytes.length, ids: [], gap: true });
+  for (const p of out) p.text = decoder.decode(bytes.subarray(p.start, p.end));
+  // A piece that starts with a combining mark joins the one before it on screen, or it would be
+  // drawn alone over a dotted circle.
+  const joined = [];
+  for (const p of out) {
+    const prev = joined[joined.length - 1];
+    if (prev && !prev.gap && !p.gap && /^\p{M}/u.test(p.text)) { prev.end = p.end; prev.text += p.text; prev.ids.push(...p.ids); }
+    else joined.push(p);
+  }
+  return joined;
+}
+const visible = (s) => esc(s).replace(/\t/g, '<i class="ws">→</i>').replace(/\n/g, '<i class="ws">↵</i>\n');
+
+function renderStrip() {
+  const box = $("strip");
+  if (!last) { box.innerHTML = '<p class="empty">Type or paste text above, or pick a sample, to see where the tokenizer cuts it.</p>'; return; }
+  const ps = pieces(last.text, last.encoding);
+  const starts = new Set(cuts ? cuts.slice(1).map((c) => c.start_byte) : []);
+  box.innerHTML = ps.map((p, i) => (starts.has(p.start) ? '<span class="cut" title="chunk boundary"></span>' : "") +
+    (p.gap ? esc(p.text) : `<span class="t" data-i="${i}">${visible(p.text)}</span>`)).join("");
+  const show = (el) => {
+    box.querySelectorAll(".on").forEach((x) => x.classList.remove("on"));
+    if (!el) return;
+    el.classList.add("on");
+    const p = ps[+el.dataset.i];
+    const n = p.ids.length;
+    $("inspect").innerHTML = `${n > 1 ? `Tokens ${fmt(p.first + 1)}–${fmt(p.first + n)}` : `Token ${fmt(p.first + 1)}`} of ${fmt(last.encoding.ids.length)}: id <b class="num">${p.ids.map(fmt).join(", ")}</b>` +
+      (n > 1 ? " · one letter split across tokens" : "");
+  };
+  box.onmouseover = (ev) => show(ev.target.closest(".t"));
+  box.onclick = (ev) => show(ev.target.closest(".t"));
+}
+
+function renderCompare() {
+  const max = Math.max(1, ...ENC.map((e) => counts[e.id] || 0));
+  $("compare").innerHTML = ENC.map((e) => {
+    const c = counts[e.id];
+    const has = typeof c === "number";
+    return `<div class="row${e.id === enc ? " sel" : ""}"><span>${e.label}</span><span class="k num">${has ? fmt(c) : "–"}</span>` +
+      `<span class="bar"><i style="transform:scaleX(${has ? c / max : 0})"></i></span></div>`;
+  }).join("");
+  const mine = counts[enc];
+  const others = ENC.filter((e) => e.id !== enc && counts[e.id] > 0);
+  if (mine > 0 && others.length === 2) {
+    const most = others.reduce((a, b) => (counts[a.id] >= counts[b.id] ? a : b));
+    const diff = counts[most.id] - mine;
+    $("finding").textContent = diff > 0
+      ? `${label(enc)} needs ${fmt(diff)} fewer tokens than ${most.label} for this text, ${Math.round((diff / counts[most.id]) * 100)}% less.`
+      : diff < 0 ? `${label(enc)} needs ${fmt(-diff)} more tokens than ${most.label} for this text.`
+      : `${label(enc)} and ${most.label} need the same number of tokens here.`;
+  } else $("finding").textContent = "";
+}
+
+function renderSize() {
+  const bytes = utf8.encode(text.value).length;
+  $("size").textContent = `${fmt(bytes)} bytes`;
+  $("size").style.color = bytes > LIMIT ? "#9b1c1c" : "";
+  return bytes > LIMIT;
+}
+
+async function update() {
+  const id = ++seq;
+  const over = renderSize();
+  if (!text.value) { counts = {}; last = null; cuts = null; $("count").textContent = "0"; renderCompare(); renderStrip(); return; }
+  if (over) { $("strip").innerHTML = `<p class="error">This text is over the demo's ${fmt(LIMIT)}-byte limit. pip install tokforge has none.</p>`; return; }
+  const src = text.value;
+  const cutting = $("cut-toggle").getAttribute("aria-checked") === "true";
+  const budget = Math.max(1, parseInt($("budget").value, 10) || 1);
+  try {
+    const rest = ENC.filter((e) => e.id !== enc).map((e) => api(e.id, "count", { text: src }).then((d) => [e.id, d.count]));
+    const chunkReq = cutting ? api(enc, "chunk", { text: src, max_tokens: budget }) : Promise.resolve(null);
+    const main = await api(enc, "encode", { text: src });
+    const [others, ch] = await Promise.all([Promise.all(rest), chunkReq]);
+    if (id !== seq) return;
+    counts = Object.fromEntries(others);
+    counts[enc] = main.encoding.ids.length;
+    last = { text: src, encoding: main.encoding };
+    cuts = ch ? ch.chunks : null;
+    $("count").textContent = fmt(counts[enc]);
+    $("inspect").textContent = cuts ? `${fmt(cuts.length)} ${cuts.length === 1 ? "chunk" : "chunks"} of at most ${fmt(budget)} tokens, cut at the strongest boundary that still fills half the budget.` : "Point at a token to see its id.";
+    renderCompare(); renderStrip();
+  } catch (err) {
+    if (id !== seq) return;
+    $("strip").innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  }
+}
+
+let timer = 0;
+const soon = () => { clearTimeout(timer); timer = setTimeout(update, 220); };
+text.addEventListener("input", () => { renderSize(); soon(); document.querySelectorAll("#samples .chip").forEach((c) => c.setAttribute("aria-pressed", "false")); });
+$("budget").addEventListener("input", () => { if ($("cut-toggle").getAttribute("aria-checked") === "true") soon(); });
+$("cut-toggle").addEventListener("click", (ev) => {
+  const t = ev.currentTarget; t.setAttribute("aria-checked", String(t.getAttribute("aria-checked") !== "true")); update();
+});
+$("encs").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-enc]"); if (!b) return;
+  enc = b.dataset.enc;
+  $("encs").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  update();
+});
+Object.keys(SAMPLES).forEach((name, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = name; b.setAttribute("aria-pressed", String(name === "Urdu and more"));
+  b.addEventListener("click", () => {
+    text.value = SAMPLES[name]; update();
+    $("samples").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  });
+  $("samples").appendChild(b);
+});
+text.value = SAMPLES["Urdu and more"];
+update();
+
+/* ---------- Speed: index with preview ---------- */
+const BENCH = [
+  ["cl100k_base", "Rust source", 25.47, 5.51, 0.97],
+  ["cl100k_base", "English docs", 36.0, 7.9, 1.25],
+  ["gpt2", "English docs", 34.52, 7.77, 1.17],
+  ["gpt2", "Rust source", 22.04, 5.82, 0.89],
+  ["o200k_base", "English docs", 31.77, 11.99, 1.24],
+  ["o200k_base", "Rust source", 22.07, 9.12, 0.98],
+  ["gpt2", "Mixed scripts", 14.46, 6.31, 1.17],
+  ["cl100k_base", "Mixed scripts", 11.61, 5.37, 1.11],
+  ["o200k_base", "Mixed scripts", 10.86, 7.69, 1.16],
+];
+const rows = $("rows");
+rows.innerHTML = BENCH.map(([e, ds, t, k, h], i) =>
+  `<li><button type="button" data-i="${i}"><span class="what">${label(e)}<small>${ds}</small></span><span class="x num">${(t / k).toFixed(1)}x</span>` +
+  `<span class="inline-preview num">${t} MB/s against tiktoken's ${k} and Hugging Face's ${h}</span></button></li>`).join("");
+function preview(i) {
+  const [e, ds, t, k, h] = BENCH[i];
+  $("frame-cap").textContent = `${label(e)} · ${e}`;
+  $("frame-title").textContent = `${ds}: ${(t / k).toFixed(1)}x tiktoken, ${Math.round(t / h)}x Hugging Face`;
+  const max = Math.max(t, k, h);
+  $("frame-bars").innerHTML = [["tokforge", t, true], ["tiktoken", k], ["Hugging Face tokenizers", h]].map(([n, v, us]) =>
+    `<div class="b${us ? " us" : ""}"><div class="lab"><span>${n}</span><span class="num">${v.toFixed(1)} MB/s</span></div>` +
+    `<div class="track"><i style="transform:scaleX(${v / max})"></i></div></div>`).join("");
+  rows.querySelectorAll("button").forEach((b) => b.classList.toggle("on", +b.dataset.i === i));
+}
+rows.addEventListener("mouseover", (ev) => { const b = ev.target.closest("button"); if (b) { rows.classList.add("dim"); preview(+b.dataset.i); } });
+rows.addEventListener("focusin", (ev) => { const b = ev.target.closest("button"); if (b) { rows.classList.add("dim"); preview(+b.dataset.i); } });
+rows.addEventListener("mouseleave", () => rows.classList.remove("dim"));
+preview(0);
+
+/* ---------- How it works: forge a word ---------- */
+let word = "tokenization", henc = "o200k_base", playing = 0;
+const WORDS = ["tokenization", "unbelievable", "Lahore", "tokforge"];
+function chips(host, items, current, onPick, fmtLabel) {
+  host.innerHTML = "";
+  items.forEach((it) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = fmtLabel ? fmtLabel(it) : it;
+    b.setAttribute("aria-pressed", String(it === current));
+    b.addEventListener("click", () => { host.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); onPick(it); });
+    host.appendChild(b);
+  });
+}
+function drawBar(k) {
+  const w = MERGES[henc][word];
+  const st = states(word, henc);
+  const s = st[k];
+  const done = k === st.length - 1;
+  $("bar").innerHTML = s.map((p, i) => `<div class="seg${p.fresh && !done ? " fresh" : ""}${done ? " final" : ""}" style="flex-grow:${utf8.encode(p.t).length}">` +
+    `<span class="piece">${esc(p.t)}</span><span class="id num">${done ? "id " + fmt(w.ids[i]) : utf8.encode(p.t).length + (utf8.encode(p.t).length === 1 ? " byte" : " bytes")}</span></div>`).join("");
+  $("step").max = st.length - 1;
+  $("step").value = k;
+  $("step-count").textContent = `${k} of ${st.length - 1}`;
+  if (k === 0) $("step-line").innerHTML = `${utf8.encode(word).length} bytes, nothing merged yet.`;
+  else {
+    const [rank, at] = w.m[k - 1];
+    const prev = st[k - 1];
+    const line = `Merge <b>${esc(prev[at].t)}</b> + <b>${esc(prev[at + 1].t)}</b>, rank ${fmt(rank)} in ${label(henc)}'s merge list.`;
+    $("step-line").innerHTML = done ? `${line} No pair left to merge: ${s.length} tokens.` : line;
+  }
+}
+function play() {
+  clearTimeout(playing);
+  const n = states(word, henc).length - 1;
+  if (reduce) { drawBar(n); return; }
+  let k = 0; drawBar(0);
+  const go = () => { k += 1; drawBar(k); if (k < n) playing = setTimeout(go, 650); };
+  playing = setTimeout(go, 500);
+}
+chips($("words"), WORDS, word, (w) => { word = w; play(); });
+chips($("how-encs"), ENC.map((e) => e.id), henc, (e) => { henc = e; play(); }, label);
+$("replay").addEventListener("click", play);
+$("step").addEventListener("input", (ev) => { clearTimeout(playing); drawBar(+ev.target.value); });
+drawBar(states(word, henc).length - 1);
+
+/* ---------- Entrances, and the bar forges when it scrolls into view ---------- */
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    if (e.target.id === "bar") { play(); io.unobserve(e.target); continue; }
+    const sibs = [...e.target.parentElement.children].filter((x) => x.classList.contains("rise"));
+    e.target.style.transitionDelay = `${Math.max(0, sibs.indexOf(e.target)) * 80}ms`;
+    e.target.classList.add("in");
+    io.unobserve(e.target);
+  }
+}, { threshold: 0.15 });
+document.querySelectorAll(".rise").forEach((el) => io.observe(el));
+io.observe($("bar"));
+const markIO = new IntersectionObserver((es) => { if (es[0].isIntersecting) { $("mark").classList.add("in"); markIO.disconnect(); } }, { threshold: 0.3 });
+markIO.observe($("mark"));
+
+/* The engraving drifts a little slower than the page, so the cut band reads as a window. */
+if (!reduce) {
+  const img = $("engraving");
+  let ticking = false;
+  const drift = () => {
+    const r = img.parentElement.getBoundingClientRect();
+    const t = (r.top + r.height / 2 - innerHeight / 2) / innerHeight;
+    if (t > -1.2 && t < 1.2) img.style.transform = `translate3d(0, ${(t * -9).toFixed(2)}%, 0)`;
+    ticking = false;
+  };
+  addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(drift); } }, { passive: true });
+  drift();
+}
+</script>
+</body>
+</html>

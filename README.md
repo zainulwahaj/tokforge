@@ -5,6 +5,10 @@ GPT-2, GPT-4 (`cl100k_base`), GPT-4o (`o200k_base`) and Qwen2 tokenizers run on 
 core written from scratch. Any other Hugging Face `tokenizer.json` (BERT, XLM-R, ...) runs on the
 Hugging Face `tokenizers` library, which the project also uses as its correctness reference.
 
+Try it in the browser at <https://tokforge.clairoai.tech>: paste text, compare token counts across
+the three GPT encodings, see where each token starts and ends, and split the text to a token budget.
+The page and its server setup are in [`demo/`](demo/).
+
 ## Speed
 
 MB/s of UTF-8 input, median of 9 runs, on a laptop with an Intel Core i7-7820HQ (4 cores, 8
