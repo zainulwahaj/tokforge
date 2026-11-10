@@ -428,11 +428,13 @@ cargo test --all-targets --locked
 cargo build --release --locked
 ```
 
-There are 61 tests: 13 library unit tests (engine cut classification and
+There are 66 tests: 16 library unit tests (engine cut classification and
 cancellation, work-module response fields and batches, byte-level core
-pre-tokenizer alternatives, alphabet and added-token matching), 5 API tests,
-6 pipeline tests, 7 CLI tests, 16 engine integration tests (one pins `auto`
-as the default core mode), 7 differential core tests in `tests/bytelevel.rs`
+pre-tokenizer alternatives, alphabet and added-token matching, the word-cache
+shard table), 5 API tests, 6 pipeline tests, 7 CLI tests, 16 engine
+integration tests (one pins `auto` as the default core mode), 9 differential
+core tests in `tests/bytelevel.rs` (two pin the word cache: identical output
+with a full cache, and the 10,000-word bound under concurrent misses)
 (the seventh is the soak's hard-case catalogue: added tokens whole, partial,
 nested, mis-cased and glued, whitespace and CR/LF mixes, digit runs,
 contractions in every case, combining marks and NFC singletons, ZWJ emoji,
@@ -535,8 +537,9 @@ load-time component gating plus differential tests against that oracle.
 4. Custom byte-level BPE core: DONE on 2026-10-18 for the GPT-2 and Qwen2 regex
    families (`src/bytelevel`, details under "Performance work already
    completed"; numbers in PERFORMANCE.md). Differences from the original plan:
-   Llama 3's regex is not implemented yet; the cache is a bounded shared
-   `RwLock` map (10,000 words) rather than thread-local; `--core verify`
+   Llama 3's regex is not implemented yet; the cache is shared and bounded at
+   10,000 words, as 16 lock-sharded insert-only tables rather than
+   thread-local; `--core verify`
    double-encodes every request rather than a sample; `ignore_merges`
    whole-word lookup exists but no real artifact exercises it yet.
 5. Product completion: DONE on 2026-10-18 except the memory bound and Python
@@ -559,11 +562,11 @@ load-time component gating plus differential tests against that oracle.
    On that evidence the default core mode returned to `auto` the same day
    ("Differential soak" in PERFORMANCE.md). `tests/bytelevel.rs` gained a
    hard-case catalogue test of the same shape. Rerun the soak after any change
-   under `src/bytelevel/` or a `tokenizers` upgrade. Newly open from the soak's
-   throughput probe: once the core's 10,000-word cache is full, every miss
-   still takes its exclusive write lock, which caps multi-threaded throughput
-   on diverse text at about twice one thread (PERFORMANCE.md sketches the
-   local fix; it needs a paired benchmark before landing).
+   under `src/bytelevel/` or a `tokenizers` upgrade. The soak's throughput
+   probe found the word cache capping multi-threaded throughput; fixed on
+   2026-11-10 with a 16-shard, single-hash cache (PERFORMANCE.md, "Fifth
+   set"): 4.6x on 8 threads with cache hits, 3.9x with a full cache,
+   single-thread hits 1.48x, single-thread `core_count` control unchanged.
 
 Still open from before: tune worker/window/batch sizes from measurements rather
 than assumptions, and investigate the pathological no-fit fallback without

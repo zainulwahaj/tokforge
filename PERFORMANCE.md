@@ -308,10 +308,8 @@ lock on every miss even when the cache can no longer accept entries; the
 backend `Tokenizer` scales no better on the same text (0.4 MB/s per thread,
 0.8 to 2.2 MB/s in total on four and eight threads, consistent with allocator
 contention from its per-word allocations). These are single runs on a shared
-machine, not paired benchmarks. Skipping the write lock once the capacity
-check under the read lock has failed is a candidate change under
-`src/bytelevel/`; it was left out of this change because it is a performance
-change, not a correctness fix, and it needs its own paired measurement.
+machine, not paired benchmarks. The fix, and the read-lock contention it
+turned up, are measured in "Fifth set" below.
 
 Recommendation: `auto` is the default core mode again. The gating self-check
 plus this soak are the evidence; `--core verify` remains available for anyone
@@ -322,6 +320,84 @@ for a new artifact family; `tests/bytelevel.rs` carries a hard-case catalogue
 of the same shape that runs in seconds. `--self-test` swaps the core's
 special-token mode so mismatches appear, which checks the reporting and the
 shrinker rather than the core.
+
+## Fifth set: word-cache scaling (sharded, single-hash cache)
+
+Measured 2026-11-10 on the development laptop (i7-7820HQ, 4 cores / 8
+threads). Baseline `7e6b7a1` (one `RwLock<HashMap>` cache, scaling workloads
+added) against candidate `ca4b32b`, each built into its own target directory,
+alternated five times with `--tokenizer models/gpt2.tokenizer.json --corpus
+tests/fixtures/corpus/mixed_multilingual.txt`. Medians of `mib_per_second`;
+raw reports in `benchmarks/runs/scaling-{before,after}-{1..5}.json`,
+summaries in `benchmarks/scaling-{before,after}.json`.
+
+`core_count_{hit,full}_{N}t` run one shared `ByteLevelBpe` on N threads over
+letter-only words: 140,002 bytes cycling through 1,000 distinct words that all
+fit in the cache (`hit`), or 181,722 bytes of 40,000 distinct words that
+overflow it (`full`). Throughput is the total over all threads. Each timed
+iteration spawns its threads, which understates absolute multi-thread numbers
+by a few percent on Windows; both sides share the harness, so the comparison
+holds.
+
+| Workload | Before (MiB/s) | After (MiB/s) | Change | Per-run ranges |
+| --- | ---: | ---: | ---: | --- |
+| hit, 1 thread | 32.7 | 48.5 | 1.48x | 32.2–33.7 / 46.1–49.4 |
+| hit, 2 threads | 28.1 | 62.9 | 2.23x | 27.2–32.0 / 57.3–63.8 |
+| hit, 4 threads | 24.9 | 91.2 | 3.66x | 24.3–28.2 / 80.2–97.1 |
+| hit, 8 threads | 23.7 | 109.4 | 4.62x | 21.9–28.5 / 93.9–131.2 |
+| full, 1 thread | 12.6 | 12.7 | 1.00x | 9.9–12.7 / 8.4–13.2 |
+| full, 2 threads | 19.0 | 23.4 | 1.23x | 10.2–19.6 / 11.4–24.2 |
+| full, 4 threads | 14.4 | 25.6 | 1.79x | 13.5–14.9 / 23.4–39.3 |
+| full, 8 threads | 9.9 | 38.8 | 3.91x | 9.0–10.7 / 21.0–57.4 |
+| `core_count` (control, 1 thread) | 53.2 | 54.3 | 1.02x | 33.6–53.7 / 41.8–57.4 |
+| `core_encode` (control) | 34.4 | 37.5 | 1.09x | 23.0–34.9 / 27.0–39.0 |
+
+What changed and why:
+
+- With one lock, cache *hits* got slower as threads were added (32.7 MiB/s on
+  one thread, 23.7 on eight): every lookup does two atomic operations on the
+  same lock word, so the threads fight over one cache line. The write lock on
+  misses, which the soak probe pointed at, was only part of it.
+- The cache is now 16 shards, chosen by the top four bits of the word's
+  FxHash, each behind its own `RwLock` aligned to 128 bytes. A miss takes its
+  shard's write lock only if the shard had room under the read lock, and
+  re-checks under the write lock. The total bound is unchanged: 16 × 625 =
+  10,000 words.
+- A first version kept a `HashMap` per shard and cost 11% on single-thread
+  `core_count` (56.1 → 49.9 MiB/s, non-overlapping ranges), because each word
+  was hashed twice. Each shard is now an insert-only open-addressing table of
+  1,024 slots that stores the hash, so one FxHash picks both shard and slot.
+  Single-thread hits also got 1.48x faster than the baseline, which hashed
+  once too; the gain comes from the simpler table (a direct probe on a stored
+  hash instead of `HashMap`'s generic lookup), and which part of it matters
+  most was not measured.
+- The slot comes from hash bits 40..50, not the low bits. For short words such
+  as `" the1"`, FxHash's low bits depend only on the first input bytes;
+  indexing by them gave probe runs of 208 slots in a full shard, which showed
+  up as a 4x slowdown on `full_1t` in an intermediate run.
+  `shard_table_spreads_real_words_across_slots` pins this.
+
+The `full` workloads stay well below `hit` because most words miss and go
+through the merge loop; that cost is per word, not contention. The 8-thread
+`full` range is wide (21–57 MiB/s) on this laptop, which runs at 4 physical
+cores; the median is the claim.
+
+Costs of the new cache, measured or derived:
+
+- Each shard stops at 625 words even while others have room, so a working set
+  near the bound is cached slightly less than before: in simulation the first
+  shard filled after 9,350 to 9,820 distinct words. Words beyond that are
+  merged on every occurrence. This changes speed only, never output.
+- The tables are allocated at load: 16 × 1,024 slots × 40 bytes = 640 KiB per
+  engine, where the old map started empty. A full old cache used about the
+  same (hashbrown at 10,000 entries is roughly 530 KiB).
+
+Verification: the differential suite (`tests/bytelevel.rs`, now with
+full-cache and concurrent-bound tests) and the quick soak (1,596,632 inputs,
+0 mismatches). The full 55 M-input soak was not rerun for this change: lookups
+compare the whole word after the hash, so a cache hit can only return that
+word's own merge output, and the full-cache differential test passes. It is
+rerun before the public release.
 
 ## Design choices
 

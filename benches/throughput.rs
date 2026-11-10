@@ -275,6 +275,66 @@ fn core_workloads(json: &[u8], text: &str) -> Vec<Value> {
     ]
 }
 
+/// Lowercase base-26 spelling of `i` ("a", "b", ..., "z", "ba", ...): letters only, so the GPT-2
+/// and Qwen2 pre-tokenizers keep each " word" as one piece.
+fn base26(mut i: usize) -> String {
+    let mut out = Vec::new();
+    loop {
+        out.push(b'a' + (i % 26) as u8);
+        i /= 26;
+        if i == 0 {
+            break;
+        }
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap()
+}
+
+/// Two texts for the word-cache scaling workloads (140 KB and 182 KB): `hit` cycles through 1,000 distinct
+/// words (they all fit in the cache), `full` has 40,000 distinct words (most of them miss once
+/// the 10,000-entry cache is full).
+fn scaling_texts() -> (String, String) {
+    let mut hit = String::new();
+    let mut i = 0;
+    while hit.len() < 140_000 {
+        hit.push(' ');
+        hit.push_str(&base26(i % 1_000));
+        i += 1;
+    }
+    let full: String = (0..40_000).map(|i| format!(" {}", base26(i))).collect();
+    (hit, full)
+}
+
+/// Aggregate core throughput on 1, 2, 4 and 8 threads sharing one engine, with the word cache
+/// either serving every word (`hit`) or full and missing most of them (`full`).
+fn scaling_workloads(json: &[u8]) -> Vec<Value> {
+    let (Ok(hit_core), Ok(full_core)) =
+        (ByteLevelBpe::from_json(json), ByteLevelBpe::from_json(json))
+    else {
+        return Vec::new();
+    };
+    let (hit, full) = scaling_texts();
+    let mut results = Vec::new();
+    for (label, core, text) in [("hit", &hit_core, &hit), ("full", &full_core, &full)] {
+        // Fill the cache before timing, so `full` measures the steady state.
+        black_box(core.count(text, false).unwrap());
+        for threads in [1usize, 2, 4, 8] {
+            results.push(measure(
+                &format!("core_count_{label}_{threads}t"),
+                text.len() * threads,
+                || {
+                    std::thread::scope(|scope| {
+                        for _ in 0..threads {
+                            scope.spawn(|| black_box(core.count(black_box(text), false).unwrap()));
+                        }
+                    });
+                },
+            ));
+        }
+    }
+    results
+}
+
 fn main() -> anyhow::Result<()> {
     // Cargo test --all-targets also launches harness-free bench binaries. Keep
     // debug builds out of performance reports and out of routine test timing.
@@ -337,6 +397,7 @@ fn main() -> anyhow::Result<()> {
     if args.tokenizer.is_some() {
         results.extend(stage_workloads(&json, &text)?);
         results.extend(core_workloads(&json, &text));
+        results.extend(scaling_workloads(&json));
     }
     if let Some(concurrency) = &args.http_load {
         let concurrency: usize = concurrency.parse()?;

@@ -5,7 +5,8 @@
 use std::{fs, path::PathBuf};
 
 use fast_tokenizer::bytelevel::{
-    classify, pretokenize_split, ByteLevelBpe, Class, Fallback, Output, Pattern, QWEN2_PATTERN,
+    classify, pretokenize_split, ByteLevelBpe, Class, Fallback, Output, Pattern, CACHE_CAPACITY,
+    QWEN2_PATTERN,
 };
 use tokenizers::{
     models::bpe::BPE,
@@ -1203,4 +1204,60 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
             texts.len()
         );
     }
+}
+
+/// Lowercase base-26 spelling of `i`: letters only, so each " word" stays one pre-token.
+fn base26(mut i: usize) -> String {
+    let mut out = Vec::new();
+    loop {
+        out.push(b'a' + (i % 26) as u8);
+        i /= 26;
+        if i == 0 {
+            break;
+        }
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap()
+}
+
+fn distinct_words(range: std::ops::Range<usize>) -> String {
+    range.map(|i| format!(" {}", base26(i))).collect()
+}
+
+#[test]
+fn full_cache_keeps_core_identical_to_backend() {
+    let json = synthetic_bpe(
+        PreTokenizerWrapper::ByteLevel(ByteLevel::new(false, false, true)),
+        false,
+    );
+    // 40,000 distinct words in 1,000-word chunks: the cache fills part-way through, and every
+    // later word is merged without being cached. Output must not change either way.
+    let texts: Vec<String> = (0..40)
+        .map(|c| distinct_words(c * 1000..(c + 1) * 1000))
+        .collect();
+    assert_core_matches(&json, "full-cache", &texts);
+    let core = ByteLevelBpe::from_json(&json).unwrap();
+    for text in &texts {
+        core.count(text, false).unwrap();
+    }
+    assert_eq!(core.cached_words(), CACHE_CAPACITY);
+}
+
+#[test]
+fn cache_never_exceeds_capacity_under_concurrent_misses() {
+    let json = synthetic_bpe(
+        PreTokenizerWrapper::ByteLevel(ByteLevel::new(false, false, true)),
+        false,
+    );
+    let core = ByteLevelBpe::from_json(&json).unwrap();
+    std::thread::scope(|scope| {
+        for t in 0..8 {
+            let core = &core;
+            scope.spawn(move || {
+                let text = distinct_words(t * 6000..(t + 1) * 6000);
+                core.count(&text, false).unwrap();
+            });
+        }
+    });
+    assert_eq!(core.cached_words(), CACHE_CAPACITY);
 }

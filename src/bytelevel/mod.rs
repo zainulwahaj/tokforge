@@ -31,7 +31,7 @@ pub use pretokenize::{
 /// Words at least this long are not cached (matches the backend's policy).
 const CACHE_MAX_WORD_BYTES: usize = 256;
 /// Cached words; insertion stops when full, so memory is bounded per engine.
-const CACHE_CAPACITY: usize = 10_000;
+pub const CACHE_CAPACITY: usize = 10_000;
 
 /// The FxHash recipe: a few multiplies per word, which beats SipHash for `(u32, u32)` merge
 /// keys and short byte strings. Hash quality is irrelevant here because keys are not adversarial
@@ -82,8 +82,140 @@ impl Hasher for FxHasher {
 }
 
 type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
-/// Word bytes to their ids; bounded by `CACHE_CAPACITY`.
-type WordCache = RwLock<FxMap<Box<[u8]>, Box<[u32]>>>;
+
+/// The word cache is split by word hash into independent shards. With one lock, every lookup on
+/// every thread hit the same lock word, and hits got slower as threads were added.
+const CACHE_SHARD_BITS: u32 = 4;
+const CACHE_SHARDS: usize = 1 << CACHE_SHARD_BITS;
+const SHARD_CAPACITY: usize = CACHE_CAPACITY / CACHE_SHARDS;
+const _: () = assert!(CACHE_CAPACITY.is_multiple_of(CACHE_SHARDS));
+
+/// Slots per shard: a power of two, so at `SHARD_CAPACITY` entries the table is at most ~61%
+/// full and linear probes stay short.
+const SHARD_SLOTS: usize = 1024;
+const _: () = assert!(SHARD_SLOTS.is_power_of_two() && SHARD_CAPACITY * 10 <= SHARD_SLOTS * 7);
+/// Where the slot bits start in the word hash; they must not overlap the shard bits on top.
+const SLOT_SHIFT: u32 = 40;
+const _: () = assert!(SLOT_SHIFT + SHARD_SLOTS.trailing_zeros() <= 64 - CACHE_SHARD_BITS);
+
+struct ShardEntry {
+    hash: u64,
+    word: Box<[u8]>,
+    ids: Box<[u32]>,
+}
+
+/// Insert-only open-addressing table keyed by a hash the caller already computed, so each word
+/// is hashed once: the top 4 bits pick the shard and bits 40..50 the slot (never the low bits;
+/// see `home`). Entries are never removed, which keeps linear probing correct without
+/// tombstones.
+struct ShardTable {
+    slots: Box<[Option<ShardEntry>]>,
+    len: usize,
+}
+
+impl ShardTable {
+    fn new() -> Self {
+        Self {
+            slots: (0..SHARD_SLOTS).map(|_| None).collect(),
+            len: 0,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Home slot from hash bits 40..50: FxHash's multiply mixes upward, so its low bits depend
+    /// only on the first few input bytes (every " the…" word would share a home), while the
+    /// top 4 bits are taken by the shard index.
+    fn home(hash: u64) -> usize {
+        (hash >> SLOT_SHIFT) as usize & (SHARD_SLOTS - 1)
+    }
+
+    /// Longest distance from an entry's home slot to where it sits (probe length on a hit).
+    #[cfg(test)]
+    fn max_displacement(&self) -> usize {
+        (0..SHARD_SLOTS)
+            .filter_map(|slot| {
+                let entry = self.slots[slot].as_ref()?;
+                Some((slot + SHARD_SLOTS - Self::home(entry.hash)) & (SHARD_SLOTS - 1))
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn get(&self, hash: u64, word: &[u8]) -> Option<&[u32]> {
+        let mut slot = Self::home(hash);
+        loop {
+            match &self.slots[slot] {
+                None => return None,
+                Some(entry) if entry.hash == hash && *entry.word == *word => {
+                    return Some(&entry.ids);
+                }
+                Some(_) => slot = (slot + 1) & (SHARD_SLOTS - 1),
+            }
+        }
+    }
+
+    /// Adds `word` unless it is already present or the shard is at `SHARD_CAPACITY`.
+    fn insert(&mut self, hash: u64, word: &[u8], ids: &[u32]) {
+        if self.len >= SHARD_CAPACITY {
+            return;
+        }
+        let mut slot = Self::home(hash);
+        loop {
+            match &self.slots[slot] {
+                None => break,
+                Some(entry) if entry.hash == hash && *entry.word == *word => return,
+                Some(_) => slot = (slot + 1) & (SHARD_SLOTS - 1),
+            }
+        }
+        self.slots[slot] = Some(ShardEntry {
+            hash,
+            word: word.into(),
+            ids: ids.into(),
+        });
+        self.len += 1;
+    }
+}
+
+/// One shard per 128 bytes so two shards' locks never share a cache line.
+#[repr(align(128))]
+struct CacheShard(RwLock<ShardTable>);
+
+/// Word bytes to their ids, bounded by `CACHE_CAPACITY` in total (`SHARD_CAPACITY` per shard).
+struct WordCache {
+    shards: Box<[CacheShard]>,
+}
+
+impl WordCache {
+    fn new() -> Self {
+        Self {
+            shards: (0..CACHE_SHARDS)
+                .map(|_| CacheShard(RwLock::new(ShardTable::new())))
+                .collect(),
+        }
+    }
+
+    /// The word's FxHash and the shard that owns it (picked by the top 4 bits, which the
+    /// multiply mixes best; the table takes its slot from bits 40..50).
+    fn locate(&self, word: &[u8]) -> (u64, &RwLock<ShardTable>) {
+        let mut hasher = FxHasher::default();
+        hasher.write(word);
+        let hash = hasher.finish();
+        (
+            hash,
+            &self.shards[(hash >> (64 - CACHE_SHARD_BITS)) as usize].0,
+        )
+    }
+
+    fn len(&self) -> usize {
+        self.shards
+            .iter()
+            .map(|s| s.0.read().unwrap_or_else(|e| e.into_inner()).len())
+            .sum()
+    }
+}
 
 /// The artifact has a component this core does not reproduce; load it with the backend only.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -522,9 +654,15 @@ impl ByteLevelBpe {
             raw_added,
             normalized_added,
             added_count: artifact.added_tokens.len(),
-            cache: RwLock::new(FxMap::default()),
+            cache: WordCache::new(),
             vocab_size: vocab_json.len() + extra_added,
         })
+    }
+
+    /// Number of words in the word cache (for tests and benchmarks).
+    #[doc(hidden)]
+    pub fn cached_words(&self) -> usize {
+        self.cache.len()
     }
 
     pub fn vocab_size(&self) -> usize {
@@ -713,20 +851,24 @@ impl ByteLevelBpe {
     /// Leave the ids of `word` in `scratch.ids`, from the cache when possible.
     fn word_ids(&self, word: &[u8], scratch: &mut Scratch) -> Result<(), Fallback> {
         scratch.ids.clear();
-        let cacheable = word.len() < CACHE_MAX_WORD_BYTES;
-        if cacheable {
-            let cache = self.cache.read().unwrap_or_else(|e| e.into_inner());
-            if let Some(ids) = cache.get(word) {
+        let located = (word.len() < CACHE_MAX_WORD_BYTES).then(|| self.cache.locate(word));
+        // Whether the shard had room when we looked; a full shard never takes the write lock.
+        let mut room = false;
+        if let Some((hash, shard)) = located {
+            let cache = shard.read().unwrap_or_else(|e| e.into_inner());
+            if let Some(ids) = cache.get(hash, word) {
                 scratch.ids.extend_from_slice(ids);
                 return Ok(());
             }
+            room = cache.len() < SHARD_CAPACITY;
         }
         self.merge(word, scratch);
-        if cacheable {
-            let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
-            if cache.len() < CACHE_CAPACITY {
-                cache.insert(word.into(), scratch.ids.as_slice().into());
-            }
+        if let (true, Some((hash, shard))) = (room, located) {
+            // insert re-checks capacity: another thread may have filled the shard meanwhile.
+            shard
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(hash, word, &scratch.ids);
         }
         Ok(())
     }
@@ -875,6 +1017,59 @@ fn detect_pattern(pre_tokenizer: Option<&serde_json::Value>) -> Result<Pattern, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shard_table_finds_words_whose_hashes_collide() {
+        let mut table = ShardTable::new();
+        // Same home slot (all slot bits zero), different full hashes; then an exact collision.
+        assert_eq!(
+            ShardTable::home(0x10),
+            ShardTable::home(0x10 + SHARD_SLOTS as u64)
+        );
+        table.insert(0x10, b"alpha", &[1]);
+        table.insert(0x10 + SHARD_SLOTS as u64, b"beta", &[2, 3]);
+        table.insert(0x10, b"gamma", &[4]);
+        assert_eq!(table.get(0x10, b"alpha"), Some(&[1u32][..]));
+        assert_eq!(
+            table.get(0x10 + SHARD_SLOTS as u64, b"beta"),
+            Some(&[2u32, 3][..])
+        );
+        assert_eq!(table.get(0x10, b"gamma"), Some(&[4u32][..]));
+        assert_eq!(table.get(0x10, b"delta"), None);
+        assert_eq!(table.len(), 3);
+    }
+
+    #[test]
+    fn shard_table_spreads_real_words_across_slots() {
+        // Short space-prefixed words, as the pre-tokenizer produces them. FxHash's low bits
+        // depend only on the first input bytes here, so indexing by them piles words up.
+        let mut table = ShardTable::new();
+        let mut index = 0usize;
+        while table.len() < SHARD_CAPACITY {
+            let word = format!(
+                " {}",
+                ["the", "and", "for", "with", "that", "from"][index % 6]
+            ) + &index.to_string();
+            let mut hasher = FxHasher::default();
+            hasher.write(word.as_bytes());
+            table.insert(hasher.finish(), word.as_bytes(), &[0]);
+            index += 1;
+        }
+        let worst = table.max_displacement();
+        assert!(worst <= 32, "longest probe run is {worst} slots");
+    }
+
+    #[test]
+    fn shard_table_ignores_duplicates_and_stops_at_capacity() {
+        let mut table = ShardTable::new();
+        table.insert(7, b"same", &[1]);
+        table.insert(7, b"same", &[9]);
+        assert_eq!(table.get(7, b"same"), Some(&[1u32][..]));
+        for i in 0..2 * SHARD_CAPACITY as u64 {
+            table.insert(i * 31, &i.to_le_bytes(), &[0]);
+        }
+        assert_eq!(table.len(), SHARD_CAPACITY);
+    }
 
     #[test]
     fn alphabet_is_a_bijection_matching_the_gpt2_table() {
