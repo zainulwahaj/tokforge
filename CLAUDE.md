@@ -25,8 +25,8 @@ request additional implementation beyond creating the handoff.
 ## Project identity and environment
 
 - Workspace: `C:\Users\HP\Desktop\fast-tokenizer`.
-- Private repository: <https://github.com/zainulwahaj/fast-tokenizer> (to be
-  renamed `tokforge` and made public at launch; GitHub redirects the old URL).
+- Public repository: <https://github.com/zainulwahaj/tokforge> (renamed from
+  `fast-tokenizer` and made public on 2026-11-10; GitHub redirects the old URL).
 - Branch: `main`; origin tracks the repository above.
 - Public name **tokforge** (decided 2026-11-10; PyPI and crates.io names were
   free). Rust package `tokforge`, version `0.1.0`, edition 2021,
@@ -81,9 +81,12 @@ below it merges):
 | #4 | `gpt4-tokenizers` | cl100k_base and o200k_base in the core, case-folded contractions resolved, both in the reference suite |
 | #5 | `launch` | Head-to-head and memory benchmarks (PERFORMANCE.md "Sixth set"), public README |
 
-Still open for the release: publish to PyPI (needs the user's PyPI account and
-trusted-publisher setup), rename the GitHub repository and make it public (the
-user's decision), the write-up on clairoai.tech, and reducing the core's
+Releases: `.github/workflows/release.yml` builds abi3 wheels (Linux x86_64 and
+aarch64, macOS arm64 and x86_64, Windows x64) and an sdist on packaging PRs;
+pushing a `v*` tag that matches `python/Cargo.toml` publishes them to PyPI via
+trusted publishing (repository environment `pypi`, deployable only from `v*`
+tags; PyPI pending publisher set up by the user) and creates a GitHub release.
+Still open: the write-up on clairoai.tech, and reducing the core's
 load-time memory peak on large vocabularies. Llama 3 shares cl100k's pattern
 but keeps running on the backend because of its `TemplateProcessing`
 post-processor. Commits in this repo need the per-command safe.directory
