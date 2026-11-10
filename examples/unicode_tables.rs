@@ -9,8 +9,14 @@
 use std::io::Write;
 
 use tokenizers::{
-    pre_tokenizers::byte_level::ByteLevel,
-    tokenizer::{OffsetReferential, OffsetType, PreTokenizedString, PreTokenizer},
+    pre_tokenizers::{
+        byte_level::ByteLevel,
+        split::{Split, SplitPattern},
+    },
+    tokenizer::{
+        normalizer::SplitDelimiterBehavior, OffsetReferential, OffsetType, PreTokenizedString,
+        PreTokenizer,
+    },
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -61,6 +67,48 @@ pub fn ranges(pre: &ByteLevel, class: Class) -> Vec<(u32, u32)> {
     ranges
 }
 
+/// Scalars in a regex character class, as Oniguruma decides membership: a `Split` that removes
+/// every match leaves nothing of a one-scalar text exactly when the scalar is in the class.
+fn class_ranges(class: &str) -> Vec<(u32, u32)> {
+    let split = Split::new(
+        SplitPattern::Regex(class.to_owned()),
+        SplitDelimiterBehavior::Removed,
+        false,
+    )
+    .unwrap();
+    let mut ranges: Vec<(u32, u32)> = Vec::new();
+    let mut buffer = [0u8; 4];
+    for code in 0..=char::MAX as u32 {
+        let Some(c) = char::from_u32(code) else {
+            continue;
+        };
+        let mut pretokenized = PreTokenizedString::from(&*c.encode_utf8(&mut buffer));
+        split.pre_tokenize(&mut pretokenized).unwrap();
+        let kept = pretokenized
+            .get_splits(OffsetReferential::Original, OffsetType::Byte)
+            .len();
+        if kept != 0 {
+            continue;
+        }
+        match ranges.last_mut() {
+            Some(last) if last.1 + 1 == code => last.1 = code,
+            _ => ranges.push((code, code)),
+        }
+    }
+    ranges
+}
+
+fn write_table(out: &mut impl Write, name: &str, ranges: &[(u32, u32)]) {
+    writeln!(out).unwrap();
+    writeln!(out, "#[rustfmt::skip]").unwrap();
+    writeln!(out, "pub(crate) static {name}: &[(u32, u32)] = &[").unwrap();
+    for (start, end) in ranges {
+        writeln!(out, "    (0x{start:04X}, 0x{end:04X}),").unwrap();
+    }
+    writeln!(out, "];").unwrap();
+    eprintln!("{name}: {} ranges", ranges.len());
+}
+
 fn main() {
     let pre = ByteLevel::new(false, false, true);
     let out = std::io::stdout();
@@ -90,14 +138,73 @@ fn main() {
         ("NUMBERS", Class::Number),
         ("WHITESPACE", Class::Whitespace),
     ] {
-        let ranges = ranges(&pre, class);
-        writeln!(out).unwrap();
-        writeln!(out, "#[rustfmt::skip]").unwrap();
-        writeln!(out, "pub(crate) static {name}: &[(u32, u32)] = &[").unwrap();
-        for (start, end) in &ranges {
-            writeln!(out, "    (0x{start:04X}, 0x{end:04X}),").unwrap();
-        }
-        writeln!(out, "];").unwrap();
-        eprintln!("{name}: {} ranges", ranges.len());
+        write_table(&mut out, name, &ranges(&pre, class));
     }
+    // The two letter-and-mark classes of the o200k_base pattern, taken verbatim from it.
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        r"// o200k `[\p{{Lu}}\p{{Lt}}\p{{Lm}}\p{{Lo}}\p{{M}}]` and `[\p{{Ll}}\p{{Lm}}\p{{Lo}}\p{{M}}]`."
+    )
+    .unwrap();
+    write_table(
+        &mut out,
+        "O200K_UPPER",
+        &class_ranges(r"[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]"),
+    );
+    write_table(
+        &mut out,
+        "O200K_LOWER",
+        &class_ranges(r"[\p{Ll}\p{Lm}\p{Lo}\p{M}]"),
+    );
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "// Non-ASCII scalars that `(?i:'s|'t|'re|'ve|'m|'ll|'d)` can match through case folding."
+    )
+    .unwrap();
+    write_table(&mut out, "CONTRACTION_FOLDS", &contraction_folds());
+}
+
+/// Every non-ASCII scalar that Oniguruma's case-insensitive contraction pattern matches in any
+/// letter position: alone after the apostrophe (`'s`, `'t`, `'m`, `'d`, or a scalar folding to a
+/// whole suffix), as the first letter of `'re`/`'ve`/`'ll`, or as their second letter.
+fn contraction_folds() -> Vec<(u32, u32)> {
+    let split = Split::new(
+        SplitPattern::Regex(r"(?i:'s|'t|'re|'ve|'m|'ll|'d)".to_owned()),
+        SplitDelimiterBehavior::Removed,
+        false,
+    )
+    .unwrap();
+    let fully_matched = |text: &str| {
+        let mut pretokenized = PreTokenizedString::from(text);
+        split.pre_tokenize(&mut pretokenized).unwrap();
+        pretokenized
+            .get_splits(OffsetReferential::Original, OffsetType::Byte)
+            .is_empty()
+    };
+    let mut ranges: Vec<(u32, u32)> = Vec::new();
+    for code in 0x80..=char::MAX as u32 {
+        let Some(c) = char::from_u32(code) else {
+            continue;
+        };
+        let folds = [
+            format!("'{c}"),
+            format!("'{c}e"),
+            format!("'{c}l"),
+            format!("'r{c}"),
+            format!("'v{c}"),
+            format!("'l{c}"),
+        ]
+        .iter()
+        .any(|text| fully_matched(text));
+        if !folds {
+            continue;
+        }
+        match ranges.last_mut() {
+            Some(last) if last.1 + 1 == code => last.1 = code,
+            _ => ranges.push((code, code)),
+        }
+    }
+    ranges
 }

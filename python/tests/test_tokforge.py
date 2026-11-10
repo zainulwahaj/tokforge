@@ -88,16 +88,27 @@ def test_missing_file_raises_os_error():
 needs_gpt2 = pytest.mark.skipif(not GPT2.exists(), reason="models/gpt2.tokenizer.json not fetched")
 
 
-@needs_gpt2
-def test_gpt2_matches_tiktoken_on_corpus():
+TIKTOKEN_ARTIFACTS = [
+    ("gpt2", "gpt2.tokenizer.json"),
+    ("cl100k_base", "cl100k_base.tokenizer.json"),
+    ("o200k_base", "o200k_base.tokenizer.json"),
+]
+
+
+@pytest.mark.parametrize("encoding,file", TIKTOKEN_ARTIFACTS)
+def test_matches_tiktoken_on_corpus(encoding, file):
+    path = ROOT / "models" / file
+    if not path.exists():
+        pytest.skip(f"models/{file} not fetched")
     tiktoken = pytest.importorskip("tiktoken")
-    reference = tiktoken.get_encoding("gpt2")
-    tok = tokforge.Tokenizer.from_file(str(GPT2))
+    reference = tiktoken.get_encoding(encoding)
+    tok = tokforge.Tokenizer.from_file(str(path))
     assert tok.core != "backend"
-    for path in CORPUS:
-        text = path.read_text(encoding="utf-8")
-        assert tok.encode(text) == reference.encode(text, disallowed_special=()), path.name
-        assert tok.count(text) == len(reference.encode(text, disallowed_special=())), path.name
+    for corpus_file in CORPUS:
+        text = corpus_file.read_text(encoding="utf-8")
+        expected = reference.encode(text, disallowed_special=())
+        assert tok.encode(text) == expected, f"{encoding}/{corpus_file.name}"
+        assert tok.count(text) == len(expected), f"{encoding}/{corpus_file.name}"
 
 
 @needs_gpt2

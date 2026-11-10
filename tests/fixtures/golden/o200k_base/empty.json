@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "artifact": "o200k_base",
+  "artifact_sha256": "43a3ad4618a6a938f8c2614154ea10c31ad53a62d5683ae0b0e6133575cef07e",
+  "corpus_file": "empty.txt",
+  "corpus_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "corpus_bytes": 0,
+  "text_is_nfc": true,
+  "generator": "tests/fixtures/golden/generate.py",
+  "python": "3.12.10",
+  "oracle": "tiktoken 0.14.0 encoding=o200k_base",
+  "cross_check": "tokenizers 0.22.2 (Python bindings of the HF Rust backend)",
+  "cases": [
+    {
+      "special_tokens": "literal",
+      "add_special_tokens": false,
+      "oracle": "tiktoken 0.14.0 encoding=o200k_base",
+      "ids": [],
+      "cross_check_matches": true
+    },
+    {
+      "special_tokens": "recognize",
+      "add_special_tokens": false,
+      "oracle": "tiktoken 0.14.0 encoding=o200k_base",
+      "ids": [],
+      "cross_check_matches": true
+    }
+  ]
+}

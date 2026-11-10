@@ -8,17 +8,30 @@
 //! Qwen2 (`Split` with the pattern below, then `ByteLevel` without its own regex):
 //! `(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+`
 //!
+//! cl100k_base (GPT-4, GPT-3.5-turbo) and Llama 3: the Qwen2 pattern with `\p{N}{1,3}` in place
+//! of `\p{N}`, so digits are grouped up to three at a time.
+//!
 //! Scalar classes come from `unicode_tables.rs`, captured from the regex engine itself.
 
-use super::unicode_tables::{LETTERS, NUMBERS, WHITESPACE};
+use super::unicode_tables::{
+    CONTRACTION_FOLDS, LETTERS, NUMBERS, O200K_LOWER, O200K_UPPER, WHITESPACE,
+};
 
 /// The exact regex text the Qwen2 family stores in its `Split` pre-tokenizer.
 pub const QWEN2_PATTERN: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
+
+/// The regex text cl100k_base conversions (and Llama 3) store in their `Split` pre-tokenizer.
+pub const CL100K_PATTERN: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
+
+/// The regex text o200k_base (GPT-4o) conversions store in their `Split` pre-tokenizer.
+pub const O200K_PATTERN: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pattern {
     Gpt2,
     Qwen2,
+    Cl100k,
+    O200k,
 }
 
 fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
@@ -61,6 +74,26 @@ pub(crate) fn is_space(c: char) -> bool {
         matches!(c, ' ' | '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r')
     } else {
         in_ranges(WHITESPACE, c)
+    }
+}
+
+/// o200k `[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]`: letters that are not lowercase, plus marks.
+#[inline]
+fn is_upperish(c: char) -> bool {
+    if c.is_ascii() {
+        c.is_ascii_uppercase()
+    } else {
+        in_ranges(O200K_UPPER, c)
+    }
+}
+
+/// o200k `[\p{Ll}\p{Lm}\p{Lo}\p{M}]`: letters that are not uppercase or titlecase, plus marks.
+#[inline]
+fn is_lowerish(c: char) -> bool {
+    if c.is_ascii() {
+        c.is_ascii_lowercase()
+    } else {
+        in_ranges(O200K_LOWER, c)
     }
 }
 
@@ -126,7 +159,9 @@ pub fn split(
     while pos < text.len() {
         let len = match pattern {
             Pattern::Gpt2 => gpt2_match(text, pos),
-            Pattern::Qwen2 => qwen2_match(text, pos)?,
+            Pattern::Qwen2 => qwen2_match(text, pos, 1)?,
+            Pattern::Cl100k => qwen2_match(text, pos, 3)?,
+            Pattern::O200k => o200k_match(text, pos)?,
         };
         debug_assert!(len > 0 && text.is_char_boundary(pos + len));
         emit(pos, pos + len);
@@ -149,28 +184,53 @@ fn contraction(rest: &[u8]) -> usize {
     }
 }
 
-/// `(?i:'s|'t|'re|'ve|'m|'ll|'d)` over ASCII; a non-ASCII scalar after the apostrophe is
-/// reported so the caller can defer to the regex engine's case folding rules.
+/// The one non-ASCII scalar the regex engine's case folding maps onto a contraction letter:
+/// U+017F LATIN SMALL LETTER LONG S folds to `s`.
+const LONG_S: char = '\u{17f}';
+
+/// A non-ASCII scalar in a contraction letter position: `Ok(true)` if it is the letter `s` by
+/// case folding, `Ok(false)` if it cannot be any contraction letter, and an error for a scalar
+/// that folds onto a contraction letter in a way this code does not model (`CONTRACTION_FOLDS`
+/// is generated from the engine, so a future engine could add one).
+fn folds_to_s(c: char) -> Result<bool, Unsupported> {
+    if c == LONG_S {
+        Ok(true)
+    } else if in_ranges(CONTRACTION_FOLDS, c) {
+        Err(Unsupported::FoldedContraction)
+    } else {
+        Ok(false)
+    }
+}
+
+/// `(?i:'s|'t|'re|'ve|'m|'ll|'d)`, including the engine's case folding of non-ASCII scalars.
 fn contraction_ci(text: &str, pos: usize) -> Result<usize, Unsupported> {
-    let rest = &text.as_bytes()[pos..];
-    if rest.first() != Some(&b'\'') {
+    let rest = &text[pos..];
+    let mut chars = rest.chars();
+    if chars.next() != Some('\'') {
         return Ok(0);
     }
-    let lower = |index: usize| rest.get(index).map(u8::to_ascii_lowercase);
-    if rest.get(1).is_some_and(|b| !b.is_ascii()) {
-        return Err(Unsupported::FoldedContraction);
+    let Some(first) = chars.next() else {
+        return Ok(0);
+    };
+    if !first.is_ascii() {
+        return Ok(if folds_to_s(first)? {
+            1 + first.len_utf8()
+        } else {
+            0
+        });
     }
-    Ok(match lower(1) {
-        Some(b's' | b't' | b'm' | b'd') => 2,
-        Some(b'r' | b'v' | b'l') => {
-            if rest.get(2).is_some_and(|b| !b.is_ascii()) {
-                return Err(Unsupported::FoldedContraction);
-            }
-            match (lower(1), lower(2)) {
-                (Some(b'r'), Some(b'e')) | (Some(b'v'), Some(b'e')) | (Some(b'l'), Some(b'l')) => 3,
-                _ => 0,
-            }
-        }
+    let second = chars.next();
+    if let Some(c) = second.filter(|c| !c.is_ascii()) {
+        // No contraction has `s` second, so a folding scalar there ends the match too; one that
+        // folds some other way is still reported.
+        folds_to_s(c)?;
+    }
+    let second = second
+        .filter(char::is_ascii)
+        .map(|c| c.to_ascii_lowercase());
+    Ok(match (first.to_ascii_lowercase(), second) {
+        ('s' | 't' | 'm' | 'd', _) => 2,
+        ('r' | 'v', Some('e')) | ('l', Some('l')) => 3,
         _ => 0,
     })
 }
@@ -211,7 +271,9 @@ fn gpt2_match(text: &str, pos: usize) -> usize {
     whitespace_tail(text, pos)
 }
 
-fn qwen2_match(text: &str, pos: usize) -> Result<usize, Unsupported> {
+/// Qwen2's pattern, whose digit alternative is `\p{N}` (`max_digits` 1), and cl100k's, the same
+/// pattern with `\p{N}{1,3}` (`max_digits` 3).
+fn qwen2_match(text: &str, pos: usize, max_digits: usize) -> Result<usize, Unsupported> {
     let rest = &text[pos..];
     let first = rest.chars().next().unwrap();
     let apostrophe = contraction_ci(text, pos)?;
@@ -228,9 +290,14 @@ fn qwen2_match(text: &str, pos: usize) -> Result<usize, Unsupported> {
     if letters > 0 {
         return Ok(prefix + letters);
     }
-    // `\p{N}`: one scalar.
+    // `\p{N}` or `\p{N}{1,3}`: up to `max_digits` scalars.
     if is_number(first) {
-        return Ok(first.len_utf8());
+        return Ok(rest
+            .chars()
+            .take(max_digits)
+            .take_while(|&c| is_number(c))
+            .map(char::len_utf8)
+            .sum());
     }
     // ` ?[^\s\p{L}\p{N}]+[\r\n]*`
     let space = usize::from(first == ' ');
@@ -240,6 +307,84 @@ fn qwen2_match(text: &str, pos: usize) -> Result<usize, Unsupported> {
         return Ok(space + others + newlines);
     }
     // `\s*[\r\n]+`: the whitespace run up to and including its last CR or LF.
+    let spaces = run(text, pos, is_space);
+    debug_assert!(spaces > 0, "every scalar belongs to some alternative");
+    if let Some(last_newline) = rest[..spaces].rfind(['\r', '\n']) {
+        return Ok(last_newline + 1);
+    }
+    Ok(whitespace_tail(text, pos))
+}
+
+/// `[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+` from `start`: the greedy star
+/// gives back one scalar at a time until a lower-ish scalar can start the plus, which then takes
+/// its whole run. Returns the end, or `None` when no lower-ish scalar is reachable.
+fn upper_star_lower_plus(text: &str, start: usize) -> Option<usize> {
+    let mut at = start + run(text, start, is_upperish);
+    loop {
+        if text[at..].chars().next().is_some_and(is_lowerish) {
+            return Some(at + run(text, at, is_lowerish));
+        }
+        if at == start {
+            return None;
+        }
+        at -= text[start..at].chars().next_back().unwrap().len_utf8();
+    }
+}
+
+/// The two word alternatives of o200k, each `[^\r\n\p{L}\p{N}]?<letters>(?i:'s|...)?`. The
+/// optional prefix is tried taken first, then not, within each alternative, and alternative 1
+/// is exhausted before alternative 2, as in the backtracking engine.
+fn o200k_word(text: &str, pos: usize) -> Result<Option<usize>, Unsupported> {
+    let first = text[pos..].chars().next().unwrap();
+    let with_prefix = !is_newline(first) && !is_letter(first) && !is_number(first);
+    let prefixed = pos + first.len_utf8();
+    let starts = if with_prefix {
+        [Some(prefixed), Some(pos)]
+    } else {
+        [Some(pos), None]
+    };
+    // `[upper-ish]*[lower-ish]+`
+    for start in starts.into_iter().flatten() {
+        if let Some(end) = upper_star_lower_plus(text, start) {
+            return Ok(Some(end + contraction_ci(text, end)?));
+        }
+    }
+    // `[upper-ish]+[lower-ish]*`
+    for start in starts.into_iter().flatten() {
+        let upper = run(text, start, is_upperish);
+        if upper > 0 {
+            let end = start + upper + run(text, start + upper, is_lowerish);
+            return Ok(Some(end + contraction_ci(text, end)?));
+        }
+    }
+    Ok(None)
+}
+
+fn o200k_match(text: &str, pos: usize) -> Result<usize, Unsupported> {
+    if let Some(end) = o200k_word(text, pos)? {
+        return Ok(end - pos);
+    }
+    let rest = &text[pos..];
+    let first = rest.chars().next().unwrap();
+    // `\p{N}{1,3}`
+    if is_number(first) {
+        return Ok(rest
+            .chars()
+            .take(3)
+            .take_while(|&c| is_number(c))
+            .map(char::len_utf8)
+            .sum());
+    }
+    // ` ?[^\s\p{L}\p{N}]+[\r\n/]*`
+    let space = usize::from(first == ' ');
+    let others = run(text, pos + space, is_other);
+    if others > 0 {
+        let tail = run(text, pos + space + others, |c| {
+            matches!(c, '\r' | '\n' | '/')
+        });
+        return Ok(space + others + tail);
+    }
+    // `\s*[\r\n]+`, then `\s+(?!\S)|\s+`
     let spaces = run(text, pos, is_space);
     debug_assert!(spaces > 0, "every scalar belongs to some alternative");
     if let Some(last_newline) = rest[..spaces].rfind(['\r', '\n']) {
@@ -286,10 +431,55 @@ mod tests {
             ["a", "  \n \n", " ", " b"]
         );
         assert_eq!(pieces(Pattern::Qwen2, "x   "), ["x", "   "]);
+        // `ſ` case-folds to `s`, so it completes a contraction; other non-ASCII letters never do.
+        // Expected pieces from Python's `regex` module.
+        assert_eq!(pieces(Pattern::Qwen2, "it'ſ"), ["it", "'ſ"]);
+        assert_eq!(pieces(Pattern::Qwen2, "l'été"), ["l", "'été"]);
+        assert_eq!(pieces(Pattern::Qwen2, "x'ré"), ["x", "'ré"]);
         assert_eq!(
-            split(Pattern::Qwen2, "it'ſ", |_, _| {}),
-            Err(Unsupported::FoldedContraction)
+            pieces(Pattern::Cl100k, "dell'università"),
+            ["dell", "'università"]
         );
+    }
+
+    #[test]
+    fn cl100k_groups_digits_in_threes_and_otherwise_follows_qwen2() {
+        assert_eq!(
+            pieces(Pattern::Cl100k, "Hello world's 1234567\n\n  x"),
+            ["Hello", " world", "'s", " ", "123", "456", "7", "\n\n", " ", " x"]
+        );
+        assert_eq!(pieces(Pattern::Cl100k, "12"), ["12"]);
+        assert_eq!(pieces(Pattern::Cl100k, "a1234b"), ["a", "123", "4", "b"]);
+        // Non-ASCII digits are \p{N} too, and a group never crosses a non-digit.
+        assert_eq!(pieces(Pattern::Cl100k, "٣٤٥٦ 1½"), ["٣٤٥", "٦", " ", "1½"]);
+    }
+
+    /// Expected pieces from Python's `regex` module on the o200k_base pattern.
+    #[test]
+    fn o200k_splits_on_case_and_attaches_contractions() {
+        let cases: &[(&str, &[&str])] = &[
+            (
+                "HelloWorld's 12345 x",
+                &["Hello", "World's", " ", "123", "45", " x"],
+            ),
+            ("ABC def", &["ABC", " def"]),
+            ("it's DON'T", &["it's", " DON'T"]),
+            ("  \n\n x\t/", &["  \n\n", " x", "\t", "/"]),
+            ("a/b/\n", &["a", "/b", "/\n"]),
+            ("中文 Ελλάδα", &["中文", " Ελλάδα"]),
+            ("x\u{301}y \u{301}a", &["x\u{301}y", " \u{301}a"]),
+            ("\u{1c5}ungla", &["\u{1c5}ungla"]),
+            ("'s", &["'s"]),
+            ("1/2", &["1", "/", "2"]),
+            ("\u{2b0}\u{1d43}", &["\u{2b0}\u{1d43}"]),
+            ("\u{301}", &["\u{301}"]),
+            ("!\u{301}x", &["!\u{301}x"]),
+            ("ABCdef GHi", &["ABCdef", " GHi"]),
+            ("\u{2160}\u{2161} x", &["\u{2160}\u{2161}", " x"]),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(&pieces(Pattern::O200k, text), expected, "{text:?}");
+        }
     }
 
     #[test]

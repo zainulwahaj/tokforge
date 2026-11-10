@@ -464,6 +464,19 @@ fn real_artifacts_match_backend_on_corpus_and_random_text() {
                 "<|vision_start|>",
             ],
         ),
+        (
+            "cl100k_base.tokenizer.json",
+            vec![
+                "<|endoftext|>",
+                "<|fim_prefix|>",
+                "<|endofprompt|>",
+                "<|im_start|>",
+            ],
+        ),
+        (
+            "o200k_base.tokenizer.json",
+            vec!["<|endoftext|>", "<|endofprompt|>"],
+        ),
     ] {
         let path = root().join("models").join(file);
         if !path.is_file() {
@@ -515,7 +528,12 @@ fn engine_selects_the_core_and_stays_identical_to_the_backend_engine() {
             false,
         ),
     )];
-    for file in ["gpt2.tokenizer.json", "qwen2.5-0.5b.tokenizer.json"] {
+    for file in [
+        "gpt2.tokenizer.json",
+        "qwen2.5-0.5b.tokenizer.json",
+        "cl100k_base.tokenizer.json",
+        "o200k_base.tokenizer.json",
+    ] {
         let path = root().join("models").join(file);
         if path.is_file() {
             artifacts.push((file.to_owned(), fs::read(&path).unwrap()));
@@ -1180,6 +1198,8 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
     for (file, nfc) in [
         ("gpt2.tokenizer.json", false),
         ("qwen2.5-0.5b.tokenizer.json", true),
+        ("cl100k_base.tokenizer.json", false),
+        ("o200k_base.tokenizer.json", false),
     ] {
         let path = root().join("models").join(file);
         if path.is_file() {
@@ -1188,16 +1208,19 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
             eprintln!("SKIPPED: {} not present", path.display());
         }
     }
-    for (label, json, nfc) in &artifacts {
+    // The flag: whether the artifact must decline some hard cases. Only an NFC normalizer does
+    // (inputs NFC would change go to the backend); every other artifact serves all of them,
+    // including case-insensitive contractions next to non-ASCII scalars.
+    for (label, json, may_decline) in &artifacts {
         let texts = soak_hard_cases(&added_token_spellings(json));
         let declined = assert_core_matches(json, label, &texts);
-        if *nfc {
-            assert!(declined > 0, "{label}: NFC singletons must be declined");
-        } else {
-            assert_eq!(
-                declined, 0,
-                "{label}: a GPT-2 style artifact declines nothing"
+        if *may_decline {
+            assert!(
+                declined > 0,
+                "{label}: hard cases include inputs it must decline"
             );
+        } else {
+            assert_eq!(declined, 0, "{label}: must serve every hard case itself");
         }
         eprintln!(
             "{label}: {} hard cases compared, {declined} declined",
