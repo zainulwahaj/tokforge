@@ -372,7 +372,16 @@ function pieces(src, encoding) {
   const tail = out.length ? out[out.length - 1].end : 0;
   if (tail < bytes.length) out.push({ start: tail, end: bytes.length, ids: [], gap: true });
   for (const p of out) p.text = decoder.decode(bytes.subarray(p.start, p.end));
-  return out;
+  // A piece that starts with a combining mark (a Devanagari vowel sign, an accent) cannot be drawn
+  // on its own without a dotted circle, so it joins the piece before it on screen.
+  const joined = [];
+  for (const p of out) {
+    const prev = joined[joined.length - 1];
+    if (prev && !prev.gap && !p.gap && /^\p{M}/u.test(p.text)) {
+      prev.end = p.end; prev.text += p.text; prev.ids.push(...p.ids);
+    } else joined.push(p);
+  }
+  return joined;
 }
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -402,7 +411,7 @@ function renderTokens() {
     const many = p.ids.length > 1;
     $("inspect").innerHTML = `${many ? "Tokens" : "Token"} ${p.ids.length > 1 ? `${fmt(p.first + 1)}–${fmt(p.first + p.ids.length)}` : fmt(p.first + 1)} of ${fmt(last.encoding.ids.length)}: ` +
       `id <b class="num">${p.ids.join(", ")}</b>, bytes ${fmt(p.start)}–${fmt(p.end)}` +
-      (many ? " (one character split across tokens)" : "");
+      (many ? " (one character or letter split across tokens)" : "");
   };
   strip.addEventListener("mouseover", (ev) => show(ev.target.closest("span[data-i]")));
   strip.addEventListener("click", (ev) => show(ev.target.closest("span[data-i]")));
