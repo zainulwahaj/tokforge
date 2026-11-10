@@ -31,7 +31,7 @@ pub use pretokenize::{
 /// Words at least this long are not cached (matches the backend's policy).
 const CACHE_MAX_WORD_BYTES: usize = 256;
 /// Cached words; insertion stops when full, so memory is bounded per engine.
-const CACHE_CAPACITY: usize = 10_000;
+pub const CACHE_CAPACITY: usize = 10_000;
 
 /// The FxHash recipe: a few multiplies per word, which beats SipHash for `(u32, u32)` merge
 /// keys and short byte strings. Hash quality is irrelevant here because keys are not adversarial
@@ -82,8 +82,48 @@ impl Hasher for FxHasher {
 }
 
 type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
-/// Word bytes to their ids; bounded by `CACHE_CAPACITY`.
-type WordCache = RwLock<FxMap<Box<[u8]>, Box<[u32]>>>;
+
+/// The word cache is split by word hash into independent shards. With one lock, every lookup on
+/// every thread hit the same lock word, and hits got slower as threads were added.
+const CACHE_SHARD_BITS: u32 = 4;
+const CACHE_SHARDS: usize = 1 << CACHE_SHARD_BITS;
+const SHARD_CAPACITY: usize = CACHE_CAPACITY / CACHE_SHARDS;
+const _: () = assert!(CACHE_CAPACITY.is_multiple_of(CACHE_SHARDS));
+
+type ShardMap = FxMap<Box<[u8]>, Box<[u32]>>;
+
+/// One shard per 128 bytes so two shards' locks never share a cache line.
+#[repr(align(128))]
+#[derive(Default)]
+struct CacheShard(RwLock<ShardMap>);
+
+/// Word bytes to their ids, bounded by `CACHE_CAPACITY` in total (`SHARD_CAPACITY` per shard).
+struct WordCache {
+    shards: Box<[CacheShard]>,
+}
+
+impl WordCache {
+    fn new() -> Self {
+        Self {
+            shards: (0..CACHE_SHARDS).map(|_| CacheShard::default()).collect(),
+        }
+    }
+
+    /// The shard that owns `word`, picked by the high bits of its FxHash (the multiply mixes
+    /// into the high bits best).
+    fn shard(&self, word: &[u8]) -> &RwLock<ShardMap> {
+        let mut hasher = FxHasher::default();
+        hasher.write(word);
+        &self.shards[(hasher.finish() >> (64 - CACHE_SHARD_BITS)) as usize].0
+    }
+
+    fn len(&self) -> usize {
+        self.shards
+            .iter()
+            .map(|s| s.0.read().unwrap_or_else(|e| e.into_inner()).len())
+            .sum()
+    }
+}
 
 /// The artifact has a component this core does not reproduce; load it with the backend only.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -522,9 +562,15 @@ impl ByteLevelBpe {
             raw_added,
             normalized_added,
             added_count: artifact.added_tokens.len(),
-            cache: RwLock::new(FxMap::default()),
+            cache: WordCache::new(),
             vocab_size: vocab_json.len() + extra_added,
         })
+    }
+
+    /// Number of words in the word cache (for tests and benchmarks).
+    #[doc(hidden)]
+    pub fn cached_words(&self) -> usize {
+        self.cache.len()
     }
 
     pub fn vocab_size(&self) -> usize {
@@ -713,18 +759,22 @@ impl ByteLevelBpe {
     /// Leave the ids of `word` in `scratch.ids`, from the cache when possible.
     fn word_ids(&self, word: &[u8], scratch: &mut Scratch) -> Result<(), Fallback> {
         scratch.ids.clear();
-        let cacheable = word.len() < CACHE_MAX_WORD_BYTES;
-        if cacheable {
-            let cache = self.cache.read().unwrap_or_else(|e| e.into_inner());
+        let shard = (word.len() < CACHE_MAX_WORD_BYTES).then(|| self.cache.shard(word));
+        // Whether the shard had room when we looked; a full shard never takes the write lock.
+        let mut room = false;
+        if let Some(shard) = shard {
+            let cache = shard.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ids) = cache.get(word) {
                 scratch.ids.extend_from_slice(ids);
                 return Ok(());
             }
+            room = cache.len() < SHARD_CAPACITY;
         }
         self.merge(word, scratch);
-        if cacheable {
-            let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
-            if cache.len() < CACHE_CAPACITY {
+        if let (true, Some(shard)) = (room, shard) {
+            let mut cache = shard.write().unwrap_or_else(|e| e.into_inner());
+            // Re-check: another thread may have filled the shard since the read.
+            if cache.len() < SHARD_CAPACITY {
                 cache.insert(word.into(), scratch.ids.as_slice().into());
             }
         }
