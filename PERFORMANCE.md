@@ -332,9 +332,12 @@ raw reports in `benchmarks/runs/scaling-{before,after}-{1..5}.json`,
 summaries in `benchmarks/scaling-{before,after}.json`.
 
 `core_count_{hit,full}_{N}t` run one shared `ByteLevelBpe` on N threads over
-about 140 KB of letter-only words: 1,000 distinct words that all fit in the
-cache (`hit`), or 40,000 that overflow it (`full`). Throughput is the total
-over all threads.
+letter-only words: 140,002 bytes cycling through 1,000 distinct words that all
+fit in the cache (`hit`), or 181,722 bytes of 40,000 distinct words that
+overflow it (`full`). Throughput is the total over all threads. Each timed
+iteration spawns its threads, which understates absolute multi-thread numbers
+by a few percent on Windows; both sides share the harness, so the comparison
+holds.
 
 | Workload | Before (MiB/s) | After (MiB/s) | Change | Per-run ranges |
 | --- | ---: | ---: | ---: | --- |
@@ -364,7 +367,10 @@ What changed and why:
   `core_count` (56.1 → 49.9 MiB/s, non-overlapping ranges), because each word
   was hashed twice. Each shard is now an insert-only open-addressing table of
   1,024 slots that stores the hash, so one FxHash picks both shard and slot.
-  That is also why single-thread hits got 1.48x faster.
+  Single-thread hits also got 1.48x faster than the baseline, which hashed
+  once too; the gain comes from the simpler table (a direct probe on a stored
+  hash instead of `HashMap`'s generic lookup), and which part of it matters
+  most was not measured.
 - The slot comes from hash bits 40..50, not the low bits. For short words such
   as `" the1"`, FxHash's low bits depend only on the first input bytes;
   indexing by them gave probe runs of 208 slots in a full shard, which showed
@@ -374,8 +380,24 @@ What changed and why:
 The `full` workloads stay well below `hit` because most words miss and go
 through the merge loop; that cost is per word, not contention. The 8-thread
 `full` range is wide (21–57 MiB/s) on this laptop, which runs at 4 physical
-cores; the median is the claim. Quick soak after the change: 1,596,632 inputs,
-0 mismatches.
+cores; the median is the claim.
+
+Costs of the new cache, measured or derived:
+
+- Each shard stops at 625 words even while others have room, so a working set
+  near the bound is cached slightly less than before: in simulation the first
+  shard filled after 9,350 to 9,820 distinct words. Words beyond that are
+  merged on every occurrence. This changes speed only, never output.
+- The tables are allocated at load: 16 × 1,024 slots × 40 bytes = 640 KiB per
+  engine, where the old map started empty. A full old cache used about the
+  same (hashbrown at 10,000 entries is roughly 530 KiB).
+
+Verification: the differential suite (`tests/bytelevel.rs`, now with
+full-cache and concurrent-bound tests) and the quick soak (1,596,632 inputs,
+0 mismatches). The full 55 M-input soak was not rerun for this change: lookups
+compare the whole word after the hash, so a cache hit can only return that
+word's own merge output, and the full-cache differential test passes. It is
+rerun before the public release.
 
 ## Design choices
 

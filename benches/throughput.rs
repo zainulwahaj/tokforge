@@ -290,7 +290,7 @@ fn base26(mut i: usize) -> String {
     String::from_utf8(out).unwrap()
 }
 
-/// Two ~140 KB texts for the word-cache scaling workloads: `hit` cycles through 1,000 distinct
+/// Two texts for the word-cache scaling workloads (140 KB and 182 KB): `hit` cycles through 1,000 distinct
 /// words (they all fit in the cache), `full` has 40,000 distinct words (most of them miss once
 /// the 10,000-entry cache is full).
 fn scaling_texts() -> (String, String) {

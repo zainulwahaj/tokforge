@@ -105,8 +105,9 @@ struct ShardEntry {
 }
 
 /// Insert-only open-addressing table keyed by a hash the caller already computed, so each word
-/// is hashed once: the high bits pick the shard, the low bits the slot. Entries are never
-/// removed, which keeps linear probing correct without tombstones.
+/// is hashed once: the top 4 bits pick the shard and bits 40..50 the slot (never the low bits;
+/// see `home`). Entries are never removed, which keeps linear probing correct without
+/// tombstones.
 struct ShardTable {
     slots: Box<[Option<ShardEntry>]>,
     len: usize,
@@ -196,8 +197,8 @@ impl WordCache {
         }
     }
 
-    /// The word's FxHash and the shard that owns it (picked by the high bits, which the
-    /// multiply mixes best; the table uses the low bits).
+    /// The word's FxHash and the shard that owns it (picked by the top 4 bits, which the
+    /// multiply mixes best; the table takes its slot from bits 40..50).
     fn locate(&self, word: &[u8]) -> (u64, &RwLock<ShardTable>) {
         let mut hasher = FxHasher::default();
         hasher.write(word);
