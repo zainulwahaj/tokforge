@@ -567,10 +567,11 @@ mod literal_special_pieces {
 }
 
 #[test]
-fn verify_is_the_default_core_mode_until_the_soak_passes() {
+fn auto_is_the_default_core_mode_since_the_soak_passed() {
     // User decision of 2026-10-18: double-encode against the backend by default
-    // until the differential soak is clean, then flip this to Auto.
+    // until the differential soak was clean, then flip this to Auto. The soak
+    // (examples/core_soak.rs) passed the same day; PERFORMANCE.md records it.
     use fast_tokenizer::CoreMode;
-    assert_eq!(EncodeOptions::default().core, CoreMode::Verify);
-    assert_eq!(engine(false).options().core, CoreMode::Verify);
+    assert_eq!(EncodeOptions::default().core, CoreMode::Auto);
+    assert_eq!(engine(false).options().core, CoreMode::Auto);
 }

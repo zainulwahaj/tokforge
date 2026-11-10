@@ -214,6 +214,115 @@ The JSONL workload with a real artifact (316 ms for GPT-2, 1,019 ms for Qwen)
 is dominated by loading the artifact per iteration, as before; it is not a
 throughput figure for the pipeline.
 
+## Differential soak: custom core against the backend
+
+Run on 2026-10-18/19 on the development machine (release profile, 8 threads,
+`tokenizers` 0.22.2) with `examples/core_soak.rs`:
+
+```powershell
+cargo run --release --example core_soak -- --output soak.json
+```
+
+The soak loads every artifact in `models/MANIFEST.json` that the core accepts
+(GPT-2 and Qwen2.5-0.5B; BERT and XLM-R are skipped as unsupported) and, for
+each of the four option combinations (`SpecialTokens::Literal` or `Recognize`,
+`add_special_tokens` off or on), runs every input through four things: the
+core directly (`ByteLevelBpe`, so declines are counted and justified), an
+`Engine` in `CoreMode::Verify` (the production path, which double-encodes and
+fails on disagreement), an `Engine` in `CoreMode::Backend` (cross-checked
+against the oracle on the corpus inputs) and a backend `Tokenizer` configured
+exactly as the engine configures it (the oracle). Wherever the core served the
+input, IDs, byte offsets, special-token mask, word ids, token strings and the
+count-only path had to equal the oracle's `encode`, and the oracle's
+`encode_fast` count had to equal its `encode` length. A decline is only
+accepted when NFC really changes the text or an apostrophe is followed by a
+non-ASCII scalar; anything else counts as an illegitimate decline.
+
+Inputs per artifact and combination, 6,907,431 in all, indexed so that any one
+of them is reproducible from the seed (539365400, `0x20261018`) and its index:
+
+| Category | Inputs | What |
+| --- | ---: | --- |
+| corpus | 633 | the 15 corpus files whole, each line, and each line with its newline |
+| window | 145,108 | sliding windows of 1 to 1,024 scalars over every file, stride a third of the size |
+| slice | 100,000 | random slices at scalar boundaries, 1 to 8,192 scalars, skewed short |
+| boundary | 41,834 | both orders of every adjacent pair of regex-class runs (1,610 runs) in 12 contexts |
+| scalar | 5,560,320 | every Unicode scalar (1,112,064) alone and as `'c`, ` c`, `c\n`, `ac1` |
+| pair | 59,536 | every ordered pair from 244 hard scalars (whitespace, controls, marks, ZWJ, singletons, byte-alphabet characters, unassigned values) |
+| random | 1,000,000 | seeded generator biased toward whitespace runs, CR/LF mixes, digit runs, mixed-case contractions, many scripts, combining marks, ZWJ emoji, half-width forms, unassigned and control code points, byte-alphabet characters, and the artifact's added tokens whole, partial, nested, mis-cased and glued; 1 to 1,500 pieces, occasionally mutated |
+
+Results (every row is the full 6,907,431 inputs; GPT-2 rows carry 439.0 MB of
+text, Qwen2.5 rows 446.8 MB because its generator pieces include 22 added
+tokens):
+
+| Artifact | Special tokens | `add_special_tokens` | Wall (s) | Inputs/s | Served by core | Declined (NFC / contraction) | Mismatches |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| GPT-2 | literal | off | 644.9 | 10,711 | 100% | 0 / 0 | 0 |
+| GPT-2 | literal | on | 609.7 | 11,329 | 100% | 0 / 0 | 0 |
+| GPT-2 | recognize | off | 579.0 | 11,931 | 100% | 0 / 0 | 0 |
+| GPT-2 | recognize | on | 719.1 | 9,606 | 100% | 0 / 0 | 0 |
+| Qwen2.5-0.5B | literal | off | 543.5 | 12,709 | 78.03% | 341,822 / 1,175,443 | 0 |
+| Qwen2.5-0.5B | literal | on | 537.7 | 12,846 | 78.03% | 341,822 / 1,175,443 | 0 |
+| Qwen2.5-0.5B | recognize | off | 566.3 | 12,197 | 78.01% | 341,822 / 1,176,953 | 0 |
+| Qwen2.5-0.5B | recognize | on | 564.5 | 12,235 | 78.01% | 341,822 / 1,176,953 | 0 |
+
+Total: 55,259,448 inputs in 4,786 s (80 minutes), zero mismatches of any kind,
+zero illegitimate declines, and the `Verify` engine never raised
+`CoreMismatch`. The soak was not cut short; the full report is
+`soak-full.json` from that run (kept outside the repository; the table above
+is its summary). A `--quick` smoke run of the same shape (1,596,632 inputs,
+187 s) was also clean. The 22% of inputs that the Qwen2.5 core declined are
+dominated by the sweep's `'c` context: every non-ASCII scalar after an
+apostrophe (1,111,936 inputs) is a declared fallback because the regex
+engine's case folding for `(?i:'s|'t|...)` is not reproduced; the remaining
+63,507 contraction declines and the 341,822 NFC declines come from the
+boundary, pair and random categories, and all were justified. GPT-2 (no
+normalizer, case-sensitive contractions) declined nothing. The largest single
+input produced 19,032 tokens on GPT-2.
+
+The harness itself was checked with `--self-test --quick`, which feeds the
+core the opposite special-token mode from the oracle: 45,414 of the 1,596,632
+inputs then mismatched (every input carrying a special spelling, in every
+combination), each was printed as a Rust string literal with both ID sequences
+and the first differing index, and the shrinker reduced the first corpus
+mismatch (the 1,728-byte `special_tokens.txt`) to `"<|endoftext|>"` on GPT-2
+and to `"<|endoftext|>"` and `"<|im_end|>"` on Qwen2.5, the shortest spellings
+that still differ. The engines are not swapped in that mode, so the engine
+path stays clean, and the self-test exits successfully only when mismatches
+were produced.
+
+Throughput of the soak itself is bounded by the backend, which runs three to
+five times per input (encode, `encode_fast`, and again inside the `Verify`
+engine); with the engine path off, one thread compares about 4,300 random
+inputs per second, two threads 6,100, four 10,300 and eight 7,800, so the
+default of eight threads is past the knee on this 4-core machine for the long
+random inputs.
+
+A separate probe (`core.count` on one 140 KB text of 40,000 distinct short
+words, so the bounded word cache is full and every lookup misses, against a
+1,000-word text that fits) showed why: with cache hits the core scales from
+6.5 MB/s on one thread to about 17.5 MB/s on four and eight threads, but with
+the cache full it stops at about 7.5 MB/s from two threads upward (3.9 MB/s
+on one), because `ByteLevelBpe::word_ids` takes the cache's exclusive write
+lock on every miss even when the cache can no longer accept entries; the
+backend `Tokenizer` scales no better on the same text (0.4 MB/s per thread,
+0.8 to 2.2 MB/s in total on four and eight threads, consistent with allocator
+contention from its per-word allocations). These are single runs on a shared
+machine, not paired benchmarks. Skipping the write lock once the capacity
+check under the read lock has failed is a candidate change under
+`src/bytelevel/`; it was left out of this change because it is a performance
+change, not a correctness fix, and it needs its own paired measurement.
+
+Recommendation: `auto` is the default core mode again. The gating self-check
+plus this soak are the evidence; `--core verify` remains available for anyone
+who wants the production-time check at the cost of one backend encode per
+request. Rerun the soak (same seed, or a new one) after any change under
+`src/bytelevel/`, after a `tokenizers` upgrade, or before enabling the core
+for a new artifact family; `tests/bytelevel.rs` carries a hard-case catalogue
+of the same shape that runs in seconds. `--self-test` swaps the core's
+special-token mode so mismatches appear, which checks the reporting and the
+shrinker rather than the core.
+
 ## Design choices
 
 - Load the tokenizer once for a server or dataset, then share it using `Arc`.
@@ -272,7 +381,7 @@ Compare worker/window settings and batch sizes from measurements before adding
 SIMD or unsafe code. The custom core could extend to the Llama 3 regex family
 and to `ignore_merges` artifacts under the same differential gate. Keep output
 correctness checks (`tests/bytelevel.rs`, `tests/reference.rs`) alongside
-performance runs. `--core verify` is the default until the differential soak
-passes clean, so production numbers for qualifying artifacts currently include
-one backend encode per request on top of the core; the `core_*` workloads above
-show the core alone, and `--core auto` opts into that behaviour today.
+performance runs. `--core auto` is the default again since the differential
+soak passed clean ("Differential soak" above); `--core verify` adds one backend
+encode per request on top of the core for anyone who wants the production-time
+check.
