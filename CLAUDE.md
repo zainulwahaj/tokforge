@@ -559,11 +559,11 @@ load-time component gating plus differential tests against that oracle.
    On that evidence the default core mode returned to `auto` the same day
    ("Differential soak" in PERFORMANCE.md). `tests/bytelevel.rs` gained a
    hard-case catalogue test of the same shape. Rerun the soak after any change
-   under `src/bytelevel/` or a `tokenizers` upgrade. Newly open from the soak's
-   throughput probe: once the core's 10,000-word cache is full, every miss
-   still takes its exclusive write lock, which caps multi-threaded throughput
-   on diverse text at about twice one thread (PERFORMANCE.md sketches the
-   local fix; it needs a paired benchmark before landing).
+   under `src/bytelevel/` or a `tokenizers` upgrade. The soak's throughput
+   probe found the word cache capping multi-threaded throughput; fixed on
+   2026-11-10 with a 16-shard, single-hash cache (PERFORMANCE.md, "Fifth
+   set"): 4.6x on 8 threads with cache hits, 3.9x with a full cache, single
+   thread unchanged.
 
 Still open from before: tune worker/window/batch sizes from measurements rather
 than assumptions, and investigate the pathological no-fit fallback without

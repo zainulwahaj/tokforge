@@ -1,0 +1,23 @@
+{
+  "method": "median of 5 alternating runs, mib_per_second",
+  "baseline_commit": "7e6b7a1",
+  "candidate_commit": "ca4b32b",
+  "tokenizer": "models/gpt2.tokenizer.json",
+  "corpus": "tests/fixtures/corpus/mixed_multilingual.txt",
+  "cpu": "Intel64 Family 6 Model 158 Stepping 9, GenuineIntel",
+  "workloads": {
+    "core_count_hit_1t": 48.5,
+    "core_count_hit_2t": 62.87,
+    "core_count_hit_4t": 91.21,
+    "core_count_hit_8t": 109.4,
+    "core_count_full_1t": 12.68,
+    "core_count_full_2t": 23.43,
+    "core_count_full_4t": 25.64,
+    "core_count_full_8t": 38.81,
+    "core_count": 54.29,
+    "core_encode": 37.47,
+    "count": 56.87,
+    "encode": 10.24,
+    "backend_count": 1.17
+  }
+}
