@@ -8,16 +8,20 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use fast_tokenizer::{
+use serde_json::json;
+use tokforge::{
     api::{self, ApiConfig},
     batch::{self, BatchConfig},
     work::{execute, Cancellation, CpuPool, Operation},
 };
-use fast_tokenizer::{CoreMode, EncodeOptions, Engine, SpecialTokens};
-use serde_json::json;
+use tokforge::{CoreMode, EncodeOptions, Engine, SpecialTokens};
 
 #[derive(Parser)]
-#[command(name = "tokenizer", version, about = "Rust tokenization engine")]
+#[command(
+    name = "tokforge",
+    version,
+    about = "Fast, verified BPE tokenization engine"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -219,9 +223,9 @@ fn run(cli: Cli) -> Result<Vec<u8>> {
     match cli.command {
         Command::Info { tokenizer } => {
             let mut info = json!({
-                "name": "fast-tokenizer", "version": fast_tokenizer::VERSION,
-                "schema_version": fast_tokenizer::work::SCHEMA_VERSION,
-                "backend": fast_tokenizer::work::BACKEND,
+                "name": "tokforge", "version": tokforge::VERSION,
+                "schema_version": tokforge::work::SCHEMA_VERSION,
+                "backend": tokforge::work::BACKEND,
                 "status": "ready", "commands": ["info", "count", "encode", "decode", "truncate", "chunk", "serve", "jsonl"],
             });
             if let Some(path) = tokenizer {

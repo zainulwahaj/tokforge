@@ -95,7 +95,7 @@ class TransformersFast(Oracle):
         import tokenizers
         import transformers
 
-        self.tmp = tempfile.mkdtemp(prefix="fast-tokenizer-oracle-")
+        self.tmp = tempfile.mkdtemp(prefix="tokforge-oracle-")
         shutil.copy(tokenizer_json, os.path.join(self.tmp, "tokenizer.json"))
         shutil.copy(tokenizer_config, os.path.join(self.tmp, "tokenizer_config.json"))
         self.tok = transformers.AutoTokenizer.from_pretrained(self.tmp)

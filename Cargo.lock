@@ -404,28 +404,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d817e038c30374a4bcb22f94d0a8a0e216958d4c3dcde369b1439fec4bdda6e6"
 
 [[package]]
-name = "fast-tokenizer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "http-body-util",
- "rayon",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokenizers",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
- "unicode-normalization-alignments",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1212,6 +1190,28 @@ dependencies = [
  "unicode-normalization-alignments",
  "unicode-segmentation",
  "unicode_categories",
+]
+
+[[package]]
+name = "tokforge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "http-body-util",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokenizers",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-normalization-alignments",
 ]
 
 [[package]]

@@ -59,10 +59,10 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: tokenizer-linux-x86_64
-            path: target/release/tokenizer
+            path: target/release/tokforge
           - os: windows-latest
             artifact: tokenizer-windows-x86_64
-            path: target/release/tokenizer.exe
+            path: target/release/tokforge.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

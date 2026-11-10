@@ -92,7 +92,7 @@ try {
             } elseif ($stagedStatus -ne 0) {
                 throw 'Could not inspect staged changes.'
             }
-            Invoke-Checked -Executable 'gh' -Arguments @('repo', 'create', 'fast-tokenizer', '--private', '--description', 'Rust tokenization and document preparation engine', '--source', '.', '--remote', 'origin', '--push')
+            Invoke-Checked -Executable 'gh' -Arguments @('repo', 'create', 'tokforge', '--private', '--description', 'Rust tokenization and document preparation engine', '--source', '.', '--remote', 'origin', '--push')
         }
     }
 

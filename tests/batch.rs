@@ -11,11 +11,11 @@ use std::{
     time::Duration,
 };
 
-use fast_tokenizer::{
+use serde_json::{json, Value};
+use tokforge::{
     batch::{process, BatchConfig},
     work::Cancellation,
 };
-use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadBuf};
 
 #[tokio::test]

@@ -1,8 +1,8 @@
-use fast_tokenizer::{EncodeOptions, Engine, Error, SpecialTokens};
 use tokenizers::{
     decoders::byte_level::ByteLevel as ByteDecoder, models::bpe::BPE,
     pre_tokenizers::byte_level::ByteLevel, Tokenizer,
 };
+use tokforge::{EncodeOptions, Engine, Error, SpecialTokens};
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/wordpiece.json");
 
@@ -276,7 +276,6 @@ fn decode_validates_ids_without_lookups_for_every_id() {
 /// Literal mode must never let the model itself emit a registered special ID.
 /// Appended as its own module: the tests above belong to another session.
 mod literal_special_pieces {
-    use fast_tokenizer::{EncodeOptions, Engine, Error, SpecialTokens};
     use tokenizers::{
         models::{bpe::BPE, unigram::Unigram, wordpiece::WordPiece},
         pre_tokenizers::{
@@ -287,6 +286,7 @@ mod literal_special_pieces {
         },
         AddedToken, OffsetReferential, OffsetType, PreTokenizedString, PreTokenizer, Tokenizer,
     };
+    use tokforge::{EncodeOptions, Engine, Error, SpecialTokens};
 
     fn load(tokenizer: &Tokenizer, special_tokens: SpecialTokens) -> Result<Engine, Error> {
         Engine::from_bytes(
@@ -571,7 +571,7 @@ fn auto_is_the_default_core_mode_since_the_soak_passed() {
     // User decision of 2026-10-18: double-encode against the backend by default
     // until the differential soak was clean, then flip this to Auto. The soak
     // (examples/core_soak.rs) passed the same day; PERFORMANCE.md records it.
-    use fast_tokenizer::CoreMode;
+    use tokforge::CoreMode;
     assert_eq!(EncodeOptions::default().core, CoreMode::Auto);
     assert_eq!(engine(false).options().core, CoreMode::Auto);
 }

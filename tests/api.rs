@@ -7,9 +7,9 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use fast_tokenizer::api::{router, ApiConfig};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use tokforge::api::{router, ApiConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tower::ServiceExt;
 
@@ -201,7 +201,7 @@ async fn batch_metrics_ids_only_and_response_header_fields() {
     assert!(lean["encoding"].get("tokens").is_none());
     assert_eq!(lean["schema_version"], 1);
     assert!(lean["backend"].as_str().unwrap().starts_with("tokenizers "));
-    assert_eq!(lean["engine_version"], fast_tokenizer::VERSION);
+    assert_eq!(lean["engine_version"], tokforge::VERSION);
 
     let (status, batch) = call(
         &app,

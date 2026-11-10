@@ -4,10 +4,6 @@
 
 use std::{fs, path::PathBuf};
 
-use fast_tokenizer::bytelevel::{
-    classify, pretokenize_split, ByteLevelBpe, Class, Fallback, Output, Pattern, CACHE_CAPACITY,
-    QWEN2_PATTERN,
-};
 use tokenizers::{
     models::bpe::BPE,
     normalizers::NormalizerWrapper,
@@ -17,6 +13,10 @@ use tokenizers::{
         PreTokenizedString, PreTokenizer,
     },
     AddedToken, NormalizedString, Tokenizer,
+};
+use tokforge::bytelevel::{
+    classify, pretokenize_split, ByteLevelBpe, Class, Fallback, Output, Pattern, CACHE_CAPACITY,
+    QWEN2_PATTERN,
 };
 
 fn root() -> PathBuf {
@@ -494,7 +494,7 @@ fn real_artifacts_match_backend_on_corpus_and_random_text() {
 /// core serves a request.
 #[test]
 fn engine_selects_the_core_and_stays_identical_to_the_backend_engine() {
-    use fast_tokenizer::{CoreMode, EncodeOptions, Engine, SpecialTokens, BACKEND_CORE};
+    use tokforge::{CoreMode, EncodeOptions, Engine, SpecialTokens, BACKEND_CORE};
 
     let wordpiece = Engine::from_bytes(
         include_bytes!("fixtures/wordpiece.json"),
