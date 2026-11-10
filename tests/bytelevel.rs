@@ -473,6 +473,10 @@ fn real_artifacts_match_backend_on_corpus_and_random_text() {
                 "<|im_start|>",
             ],
         ),
+        (
+            "o200k_base.tokenizer.json",
+            vec!["<|endoftext|>", "<|endofprompt|>"],
+        ),
     ] {
         let path = root().join("models").join(file);
         if !path.is_file() {
@@ -528,6 +532,7 @@ fn engine_selects_the_core_and_stays_identical_to_the_backend_engine() {
         "gpt2.tokenizer.json",
         "qwen2.5-0.5b.tokenizer.json",
         "cl100k_base.tokenizer.json",
+        "o200k_base.tokenizer.json",
     ] {
         let path = root().join("models").join(file);
         if path.is_file() {
@@ -1194,6 +1199,8 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
         ("gpt2.tokenizer.json", false),
         ("qwen2.5-0.5b.tokenizer.json", true),
         ("cl100k_base.tokenizer.json", true),
+        // o200k attaches contractions to words, so no hard case needs Unicode case folding.
+        ("o200k_base.tokenizer.json", false),
     ] {
         let path = root().join("models").join(file);
         if path.is_file() {
@@ -1214,10 +1221,7 @@ fn soak_hard_cases_match_backend_on_synthetic_and_real_artifacts() {
                 "{label}: hard cases include inputs it must decline"
             );
         } else {
-            assert_eq!(
-                declined, 0,
-                "{label}: a GPT-2 style artifact declines nothing"
-            );
+            assert_eq!(declined, 0, "{label}: must serve every hard case itself");
         }
         eprintln!(
             "{label}: {} hard cases compared, {declined} declined",

@@ -25,7 +25,7 @@ use unicode_normalization_alignments::{is_nfc, is_nfc_quick, IsNormalized};
 
 pub use pretokenize::{
     classify, split as pretokenize_split, Class, Pattern, Unsupported as PretokenizeUnsupported,
-    CL100K_PATTERN, QWEN2_PATTERN,
+    CL100K_PATTERN, O200K_PATTERN, QWEN2_PATTERN,
 };
 
 /// Words at least this long are not cached (matches the backend's policy).
@@ -680,6 +680,7 @@ impl ByteLevelBpe {
                 Pattern::Gpt2 => "GPT-2",
                 Pattern::Qwen2 => "Qwen2",
                 Pattern::Cl100k => "cl100k",
+                Pattern::O200k => "o200k",
             },
             if self.nfc {
                 "NFC normalizer"
@@ -1003,6 +1004,7 @@ fn detect_pattern(pre_tokenizer: Option<&serde_json::Value>) -> Result<Pattern, 
             let pattern = match regex {
                 Some(QWEN2_PATTERN) => Some(Pattern::Qwen2),
                 Some(CL100K_PATTERN) => Some(Pattern::Cl100k),
+                Some(O200K_PATTERN) => Some(Pattern::O200k),
                 _ => None,
             };
             // These patterns match every scalar, so `Isolated` and `Removed` with `invert` (keep
