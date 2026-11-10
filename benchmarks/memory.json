@@ -1,0 +1,112 @@
+{
+  "machine": {
+    "cpu": "Intel64 Family 6 Model 158 Stepping 9, GenuineIntel",
+    "os": "Windows-10-10.0.19045-SP0"
+  },
+  "libraries": [
+    {
+      "encoding": "gpt2",
+      "library": "tokforge",
+      "base_mib": 19.0,
+      "loaded_mib": 35.2,
+      "load_delta_mib": 16.3,
+      "load_peak_mib": 49.6,
+      "encode_peak_mib": 49.6,
+      "encode_peak_over_load_peak_mib": 0.0
+    },
+    {
+      "encoding": "gpt2",
+      "library": "tiktoken",
+      "base_mib": 18.8,
+      "loaded_mib": 44.3,
+      "load_delta_mib": 25.4,
+      "load_peak_mib": 52.4,
+      "encode_peak_mib": 52.4,
+      "encode_peak_over_load_peak_mib": 0.0
+    },
+    {
+      "encoding": "gpt2",
+      "library": "tokenizers",
+      "base_mib": 18.9,
+      "loaded_mib": 28.7,
+      "load_delta_mib": 9.8,
+      "load_peak_mib": 41.1,
+      "encode_peak_mib": 41.1,
+      "encode_peak_over_load_peak_mib": 0.0
+    },
+    {
+      "encoding": "cl100k_base",
+      "library": "tokforge",
+      "base_mib": 19.2,
+      "loaded_mib": 48.5,
+      "load_delta_mib": 29.3,
+      "load_peak_mib": 81.0,
+      "encode_peak_mib": 81.0,
+      "encode_peak_over_load_peak_mib": 0.0
+    },
+    {
+      "encoding": "cl100k_base",
+      "library": "tiktoken",
+      "base_mib": 19.1,
+      "loaded_mib": 58.8,
+      "load_delta_mib": 39.7,
+      "load_peak_mib": 60.0,
+      "encode_peak_mib": 61.4,
+      "encode_peak_over_load_peak_mib": 1.5
+    },
+    {
+      "encoding": "cl100k_base",
+      "library": "tokenizers",
+      "base_mib": 18.7,
+      "loaded_mib": 36.6,
+      "load_delta_mib": 17.8,
+      "load_peak_mib": 59.4,
+      "encode_peak_mib": 59.4,
+      "encode_peak_over_load_peak_mib": 0.0
+    },
+    {
+      "encoding": "o200k_base",
+      "library": "tokforge",
+      "base_mib": 18.8,
+      "loaded_mib": 78.1,
+      "load_delta_mib": 59.4,
+      "load_peak_mib": 145.7,
+      "encode_peak_mib": 145.7,
+      "encode_peak_over_load_peak_mib": 0.0
+    },
+    {
+      "encoding": "o200k_base",
+      "library": "tiktoken",
+      "base_mib": 19.1,
+      "loaded_mib": 89.1,
+      "load_delta_mib": 70.0,
+      "load_peak_mib": 92.4,
+      "encode_peak_mib": 93.1,
+      "encode_peak_over_load_peak_mib": 0.7
+    },
+    {
+      "encoding": "o200k_base",
+      "library": "tokenizers",
+      "base_mib": 19.1,
+      "loaded_mib": 53.7,
+      "load_delta_mib": 34.5,
+      "load_peak_mib": 99.6,
+      "encode_peak_mib": 99.6,
+      "encode_peak_over_load_peak_mib": 0.0
+    }
+  ],
+  "server": {
+    "artifact": "gpt2",
+    "workers": 4,
+    "queue_capacity": 16,
+    "concurrent_requests": 20,
+    "request_body_bytes": 1017001,
+    "statuses": [
+      200
+    ],
+    "response_bytes_each": 8233118,
+    "seconds": 0.44,
+    "idle_mib": 20.6,
+    "peak_mib": 99.7
+  }
+}
