@@ -47,20 +47,19 @@ pub enum SpecialTokens {
 
 /// Which tokenization core serves requests for an artifact the custom core supports.
 ///
-/// `Verify` is the default until the differential soak (CLAUDE.md, "Next useful work")
-/// has passed clean on GPT-2 and Qwen2.5; the user chose to pay one backend encode per
-/// request rather than trust the custom core on gating and tests alone. Switch the
-/// default back to `Auto` here and in the CLI once that evidence exists.
+/// `Auto` is the default: the differential soak (`examples/core_soak.rs`; PERFORMANCE.md,
+/// "Differential soak") passed clean on GPT-2 and Qwen2.5 on 2026-10-18, which was the
+/// user's condition for trusting the custom core without a backend re-encode per request.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CoreMode {
     /// The custom byte-level BPE core when the artifact qualifies, otherwise the backend.
+    #[default]
     Auto,
     /// Always the Hugging Face backend.
     Backend,
     /// Run both on every request and fail the request if they disagree (a differential check
     /// against the backend at production time; costs about one backend encode per request).
-    #[default]
     Verify,
 }
 

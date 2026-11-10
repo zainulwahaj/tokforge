@@ -41,13 +41,14 @@ exact source bytes matter. Invalid input exits unsuccessfully with an error on
 stderr.
 
 `encode --ids-only` returns only IDs and the count. `--core` selects the
-tokenization core: `verify` (the current default) runs the custom byte-level
-BPE core and the Hugging Face backend on every request and fails any request
-where they disagree; `auto` serves qualifying artifacts from the custom core
-alone; `backend` forces the Hugging Face backend. `verify` remains the default
-until the differential soak has passed clean, after which `auto` becomes the
-default. `info --tokenizer <path>` reports `artifact.core`, the response schema
-version, and the locked backend crate version.
+tokenization core: `auto` (the default) serves qualifying artifacts from the
+custom byte-level BPE core alone; `verify` runs the custom core and the Hugging
+Face backend on every request and fails any request where they disagree;
+`backend` forces the Hugging Face backend. `auto` became the default after the
+differential soak (`examples/core_soak.rs`, results under "Differential soak"
+in PERFORMANCE.md) passed clean on GPT-2 and Qwen2.5. `info --tokenizer <path>`
+reports `artifact.core`, the response schema version, and the locked backend
+crate version.
 
 ## HTTP API
 
@@ -185,9 +186,10 @@ its CPU slot until that call returns, even if the HTTP deadline has expired.
   offsets, word indices, mask); inputs it cannot reproduce exactly (text that
   NFC would change, or a case-folded contraction) are served by the backend per
   request. `artifact.core` names the active core; `--core backend` forces the
-  backend and `--core verify`, the default until the differential soak passes,
-  runs both on every request and fails it if they disagree.
-  `tests/bytelevel.rs` is the differential proof.
+  backend and `--core verify` runs both on every request and fails it if they
+  disagree. `tests/bytelevel.rs` and the release soak in
+  `examples/core_soak.rs` (PERFORMANCE.md, "Differential soak") are the
+  differential proof behind the `auto` default.
 - Decode preserves special tokens unless `--skip-special-tokens` is set and
   rejects unknown IDs. Decoding follows the artifact's normalization/decoder;
   arbitrary models do not guarantee an exact text round trip.

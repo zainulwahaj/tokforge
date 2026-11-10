@@ -75,6 +75,7 @@ checked if a later network operation requires it.
 | `src/bytelevel/mod.rs`, `pretokenize.rs`, `unicode_tables.rs` | Custom byte-level BPE core: artifact gating, byte alphabet, heap-ordered merges, bounded word cache, hand-written GPT-2/Qwen2 pre-tokenizers, regex-derived Unicode class tables |
 | `build.rs` | Captures the locked `tokenizers` version into `work::BACKEND` for every response |
 | `examples/unicode_tables.rs` | Regenerates the Unicode class tables from the live Oniguruma regex |
+| `examples/core_soak.rs` | Release differential soak: millions of corpus-derived, swept and generated inputs through the core, `Engine` in `Verify` and `Backend` modes, and the backend oracle per artifact and option combination; prints mismatches as Rust literals and shrinks them |
 | `tests/bytelevel.rs` | Differential suite: core vs backend on corpus, random text, synthetic and real artifacts; engine core selection |
 | `.github/workflows/ci.yml` | fmt/clippy/tests on Linux and Windows, reference job with fetched models, release binaries |
 | `tests/engine.rs` | Token correctness, offsets, special tokens, Literal-mode special-piece suppression, Unicode, budgets, nonmonotonic counts |
@@ -123,15 +124,22 @@ There is no automatic artifact download or built-in default production model.
 `encode --ids-only` returns IDs and count only. `--core auto|backend|verify`
 selects the tokenization core (`auto` uses the custom byte-level BPE core for
 qualifying artifacts, `verify` double-encodes with the backend and fails on
-disagreement). **The default is `verify`** (both `CoreMode::default()` and the
-CLI) by the user's decision on 2026-10-18: it stays so until the differential
-soak in "Next useful work" passes clean on GPT-2 and Qwen2.5, after which the
-default returns to `auto`. Verify costs about one backend encode per request on
-qualifying artifacts and nothing on artifacts the core does not serve. `serve`
+disagreement). **The default is `auto`** (both `CoreMode::default()` and the
+CLI): the user's decision on 2026-10-18 was to keep `verify` as the default
+until the differential soak passed clean on GPT-2 and Qwen2.5, and it did that
+day ("Differential soak" in PERFORMANCE.md; item 6 under "Next useful work").
+Verify costs about one backend encode per request on qualifying artifacts and
+nothing on artifacts the core does not serve. `serve`
 adds `GET /metrics` and `POST /v1/batch`; every response carries
 `schema_version`, `engine_version`, `backend`, and `artifact.core`.
 Benchmark a real artifact with
 `cargo bench --bench throughput -- --tokenizer models/gpt2.tokenizer.json --corpus <file> --http-load 8`.
+Run the differential soak of the custom core against the backend with
+`cargo run --release --example core_soak -- --output soak.json` (about 80
+minutes for 55 million inputs on the development machine; `--quick` is a
+three-minute smoke run of the same shape; `--seed`, `--random`, `--threads`,
+`--artifact gpt2` and `--self-test` narrow or exercise it). It skips artifacts
+the core does not support and exits nonzero on any mismatch.
 
 Single-operation commands accept `--text`, `--file`, or stdin when both are
 omitted. `--text` and `--file` conflict. Decode input is a JSON array of unsigned
@@ -420,14 +428,21 @@ cargo test --all-targets --locked
 cargo build --release --locked
 ```
 
-There are 59 tests: 13 library unit tests (engine cut classification and
+There are 61 tests: 13 library unit tests (engine cut classification and
 cancellation, work-module response fields and batches, byte-level core
 pre-tokenizer alternatives, alphabet and added-token matching), 5 API tests,
-6 pipeline tests, 7 CLI tests, 15 engine integration tests, 6 differential core
-tests in `tests/bytelevel.rs`, and the 7 reference tests described below.
-Coverage includes core selection and bit-identity through the public `Engine`
-API (IDs, tokens, offsets, masks, chunk cuts) against the backend-only engine,
-`--core backend|verify`, IDs-only encode, batch records with per-item errors
+6 pipeline tests, 7 CLI tests, 16 engine integration tests (one pins `auto`
+as the default core mode), 7 differential core tests in `tests/bytelevel.rs`
+(the seventh is the soak's hard-case catalogue: added tokens whole, partial,
+nested, mis-cased and glued, whitespace and CR/LF mixes, digit runs,
+contractions in every case, combining marks and NFC singletons, ZWJ emoji,
+half-width forms, unassigned and control scalars, a strided sweep of every
+scalar in five contexts, scalar pairs and class-boundary strings; the whole
+file takes about two minutes in debug mode with the real artifacts present,
+most of it in the engine-selection test's chunking), and the 7 reference
+tests described below. Coverage includes core selection and bit-identity
+through the public `Engine` API (IDs, tokens, offsets, masks, chunk cuts)
+against the backend-only engine, `--core backend|verify`, IDs-only encode, batch records with per-item errors
 and nesting/size limits, `/metrics` counters, `schema_version`/`backend`
 fields, exact IDs/offsets, special-token options, Literal-mode
 suppression of model-internal special pieces (inline Unigram, WordPiece and BPE
@@ -532,6 +547,23 @@ load-time component gating plus differential tests against that oracle.
    every response; `ids_only`/`--ids-only` encode; `POST /v1/batch` (256
    operations under one slot, per-item errors); `GET /metrics` (Prometheus
    text). A documented memory bound and Python bindings remain open.
+
+6. Differential soak of the custom core: DONE on 2026-10-18/19.
+   `examples/core_soak.rs` compared the core, `Engine` in `CoreMode::Verify`
+   and the backend oracle on 55,259,448 inputs (6,907,431 per artifact and
+   option combination: corpus files and lines, sliding windows and random
+   slices, class-boundary strings, every Unicode scalar in five contexts,
+   59,536 scalar pairs and 1,000,000 seeded generator inputs biased toward the
+   hard cases), seed 539365400, 8 threads, 80 minutes: zero mismatches in IDs,
+   offsets, masks, word ids, tokens or counts, and zero illegitimate declines.
+   On that evidence the default core mode returned to `auto` the same day
+   ("Differential soak" in PERFORMANCE.md). `tests/bytelevel.rs` gained a
+   hard-case catalogue test of the same shape. Rerun the soak after any change
+   under `src/bytelevel/` or a `tokenizers` upgrade. Newly open from the soak's
+   throughput probe: once the core's 10,000-word cache is full, every miss
+   still takes its exclusive write lock, which caps multi-threaded throughput
+   on diverse text at about twice one thread (PERFORMANCE.md sketches the
+   local fix; it needs a paired benchmark before landing).
 
 Still open from before: tune worker/window/batch sizes from measurements rather
 than assumptions, and investigate the pathological no-fit fallback without

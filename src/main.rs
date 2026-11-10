@@ -164,9 +164,9 @@ struct Model {
     /// How special-token spellings inside input text are handled.
     #[arg(long, value_enum, default_value = "literal")]
     special_tokens: SpecialPolicy,
-    /// Which tokenization core serves encode and count. `verify` stays the default
-    /// until the differential soak passes clean; pass `auto` to opt into the custom core alone.
-    #[arg(long, value_enum, default_value = "verify")]
+    /// Which tokenization core serves encode and count: `auto` (the default) serves
+    /// qualifying artifacts from the custom core, `verify` double-encodes with the backend.
+    #[arg(long, value_enum, default_value = "auto")]
     core: CorePolicy,
 }
 
