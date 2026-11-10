@@ -85,7 +85,13 @@ Releases: `.github/workflows/release.yml` builds abi3 wheels (Linux x86_64 and
 aarch64, macOS arm64 and x86_64, Windows x64) and an sdist on packaging PRs;
 pushing a `v*` tag that matches `python/Cargo.toml` publishes them to PyPI via
 trusted publishing (repository environment `pypi`, deployable only from `v*`
-tags; PyPI pending publisher set up by the user) and creates a GitHub release.
+tags; PyPI trusted publisher set up by the user) and creates a GitHub release.
+**v0.1.0 was published on 2026-11-10** (<https://pypi.org/project/tokforge/>,
+five wheels plus the sdist). A clean `pip install tokforge` gave IDs
+identical to tiktoken on gpt2, cl100k_base and o200k_base. For the next
+release, bump `version` in both `Cargo.toml` and `python/Cargo.toml`, merge,
+then push the matching tag. GitHub retired the `macos-14` runner image, so use
+`macos-latest`.
 Still open: the write-up on clairoai.tech, and reducing the core's
 load-time memory peak on large vocabularies. Llama 3 shares cl100k's pattern
 but keeps running on the backend because of its `TemplateProcessing`
