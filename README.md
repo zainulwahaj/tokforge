@@ -75,11 +75,13 @@ models, normalizers and decoders use Hugging Face `tokenizers`.
 
 ## Python
 
-Until the first PyPI release, build from a checkout (needs a Rust toolchain):
-
 ```bash
-pip install ./python
+pip install tokforge
 ```
+
+Wheels cover Python 3.9 and later on Linux (x86_64, aarch64), macOS (arm64, x86_64) and Windows
+x64. Anywhere else pip builds the source distribution, which needs a Rust toolchain. To build from a
+checkout instead, run `pip install ./python`.
 
 ```python
 import tokforge
