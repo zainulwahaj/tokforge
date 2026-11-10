@@ -1,0 +1,557 @@
+{
+  "machine": {
+    "cpu": "Intel64 Family 6 Model 158 Stepping 9, GenuineIntel",
+    "logical_cpus": 8,
+    "os": "Windows-10-10.0.19045-SP0",
+    "python": "3.14.7"
+  },
+  "versions": {
+    "tokforge": "0.1.0",
+    "tiktoken": "0.14.0",
+    "tokenizers": "0.22.2"
+  },
+  "method": "- single: the whole dataset as one string, one thread\n- batch: the dataset cut into ~4 KB documents on line boundaries, all cores\n  (tiktoken num_threads=os.cpu_count(); tokforge and tokenizers use their rayon pools)\n\nEach figure is the median of --repeat timed runs after one warm-up run, in MB/s of UTF-8 input.",
+  "repeat": 9,
+  "results": [
+    {
+      "encoding": "gpt2",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 34.52,
+      "seconds": 0.0032495000050403178,
+      "bytes": 112175,
+      "tokens": 32468
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 54.01,
+      "seconds": 0.0020769999973708764,
+      "bytes": 112175,
+      "tokens": 32468
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 7.77,
+      "seconds": 0.014446200002566911,
+      "bytes": 112175,
+      "tokens": 32468
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 15.14,
+      "seconds": 0.007407400000374764,
+      "bytes": 112175,
+      "tokens": 32468
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 1.17,
+      "seconds": 0.09606050000002142,
+      "bytes": 112175,
+      "tokens": 32468
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 4.3,
+      "seconds": 0.026095300003362354,
+      "bytes": 112175,
+      "tokens": 32468
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 22.04,
+      "seconds": 0.020895599998766556,
+      "bytes": 460561,
+      "tokens": 246433
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 45.26,
+      "seconds": 0.01017639999918174,
+      "bytes": 460561,
+      "tokens": 246433
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 5.82,
+      "seconds": 0.0791386999990209,
+      "bytes": 460561,
+      "tokens": 246433
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 15.0,
+      "seconds": 0.03070090000255732,
+      "bytes": 460561,
+      "tokens": 246433
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 0.89,
+      "seconds": 0.5159770000027493,
+      "bytes": 460561,
+      "tokens": 246433
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 4.13,
+      "seconds": 0.11147939999500522,
+      "bytes": 460561,
+      "tokens": 246433
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 14.46,
+      "seconds": 0.002345100001548417,
+      "bytes": 33909,
+      "tokens": 18541
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 24.56,
+      "seconds": 0.0013805000053253025,
+      "bytes": 33909,
+      "tokens": 18541
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 6.31,
+      "seconds": 0.005373599997255951,
+      "bytes": 33909,
+      "tokens": 18541
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 8.54,
+      "seconds": 0.003972200000134762,
+      "bytes": 33909,
+      "tokens": 18541
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 1.17,
+      "seconds": 0.028926200000569224,
+      "bytes": 33909,
+      "tokens": 18541
+    },
+    {
+      "encoding": "gpt2",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 3.82,
+      "seconds": 0.008865899995726068,
+      "bytes": 33909,
+      "tokens": 18541
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 36.0,
+      "seconds": 0.0031156999975792132,
+      "bytes": 112175,
+      "tokens": 28803
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 59.15,
+      "seconds": 0.0018963999973493628,
+      "bytes": 112175,
+      "tokens": 28803
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 7.9,
+      "seconds": 0.014193000002705958,
+      "bytes": 112175,
+      "tokens": 28803
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 14.45,
+      "seconds": 0.007762000001093838,
+      "bytes": 112175,
+      "tokens": 28803
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 1.25,
+      "seconds": 0.0899107000004733,
+      "bytes": 112175,
+      "tokens": 28803
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 4.57,
+      "seconds": 0.02455560000089463,
+      "bytes": 112175,
+      "tokens": 28803
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 25.47,
+      "seconds": 0.018082100003084633,
+      "bytes": 460561,
+      "tokens": 145518
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 54.37,
+      "seconds": 0.008471000001009088,
+      "bytes": 460561,
+      "tokens": 145518
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 5.51,
+      "seconds": 0.08353080000233604,
+      "bytes": 460561,
+      "tokens": 145518
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 14.39,
+      "seconds": 0.032008799993491266,
+      "bytes": 460561,
+      "tokens": 145518
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 0.97,
+      "seconds": 0.47481929999776185,
+      "bytes": 460561,
+      "tokens": 145518
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 4.61,
+      "seconds": 0.09982349999336293,
+      "bytes": 460561,
+      "tokens": 145518
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 11.61,
+      "seconds": 0.0029209999993327074,
+      "bytes": 33909,
+      "tokens": 15193
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 19.0,
+      "seconds": 0.0017848000061349012,
+      "bytes": 33909,
+      "tokens": 15193
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 5.37,
+      "seconds": 0.00631009999779053,
+      "bytes": 33909,
+      "tokens": 15193
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 8.25,
+      "seconds": 0.0041082000025198795,
+      "bytes": 33909,
+      "tokens": 15193
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 1.11,
+      "seconds": 0.03067719999671681,
+      "bytes": 33909,
+      "tokens": 15193
+    },
+    {
+      "encoding": "cl100k_base",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 3.49,
+      "seconds": 0.00971459999709623,
+      "bytes": 33909,
+      "tokens": 15193
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 31.77,
+      "seconds": 0.003531399997882545,
+      "bytes": 112175,
+      "tokens": 28809
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 53.78,
+      "seconds": 0.002086000000417698,
+      "bytes": 112175,
+      "tokens": 28809
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 11.99,
+      "seconds": 0.009355000001960434,
+      "bytes": 112175,
+      "tokens": 28809
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 17.58,
+      "seconds": 0.006381899998814333,
+      "bytes": 112175,
+      "tokens": 28809
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "english",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 1.24,
+      "seconds": 0.09052920000249287,
+      "bytes": 112175,
+      "tokens": 28809
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "english",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 4.76,
+      "seconds": 0.023563900002045557,
+      "bytes": 112175,
+      "tokens": 28809
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 22.07,
+      "seconds": 0.02086750000307802,
+      "bytes": 460561,
+      "tokens": 146376
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 50.6,
+      "seconds": 0.00910180000209948,
+      "bytes": 460561,
+      "tokens": 146376
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 9.12,
+      "seconds": 0.05050560000381665,
+      "bytes": 460561,
+      "tokens": 146376
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 20.5,
+      "seconds": 0.022468900002422743,
+      "bytes": 460561,
+      "tokens": 146376
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "code",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 0.98,
+      "seconds": 0.47195620000275085,
+      "bytes": 460561,
+      "tokens": 146376
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "code",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 4.61,
+      "seconds": 0.09999130000505829,
+      "bytes": 460561,
+      "tokens": 146376
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tokforge",
+      "mb_per_s": 10.86,
+      "seconds": 0.0031234999987646006,
+      "bytes": 33909,
+      "tokens": 12144
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tokforge",
+      "mb_per_s": 20.38,
+      "seconds": 0.0016639999957988039,
+      "bytes": 33909,
+      "tokens": 12144
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tiktoken",
+      "mb_per_s": 7.69,
+      "seconds": 0.004411699999764096,
+      "bytes": 33909,
+      "tokens": 12144
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tiktoken",
+      "mb_per_s": 8.8,
+      "seconds": 0.003853399997751694,
+      "bytes": 33909,
+      "tokens": 12144
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "multilingual",
+      "workload": "single",
+      "library": "tokenizers",
+      "mb_per_s": 1.16,
+      "seconds": 0.029245700003230013,
+      "bytes": 33909,
+      "tokens": 12144
+    },
+    {
+      "encoding": "o200k_base",
+      "dataset": "multilingual",
+      "workload": "batch",
+      "library": "tokenizers",
+      "mb_per_s": 3.65,
+      "seconds": 0.00929300000279909,
+      "bytes": 33909,
+      "tokens": 12144
+    }
+  ]
+}

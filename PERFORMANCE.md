@@ -399,6 +399,86 @@ compare the whole word after the hash, so a cache hit can only return that
 word's own merge output, and the full-cache differential test passes. It is
 rerun before the public release.
 
+## Sixth set: head-to-head against tiktoken and Hugging Face tokenizers
+
+Measured 2026-11-10 on the development laptop with
+`python python/benchmarks/compare.py --repeat 9` (tokforge 0.1.0, tiktoken
+0.14.0, tokenizers 0.22.2, Python 3.14). Raw results:
+`benchmarks/python-compare.json`. All three libraries load the same tokenizer
+(tiktoken by encoding name, the others from the same `tokenizer.json`), and the
+script stops before timing unless every library returns ids identical to
+tiktoken's, for the whole dataset and for the batch. Datasets come from the
+repository: its Markdown docs (`english`), its Rust sources (`code`) and the
+hard-case corpus (`multilingual`). `single` encodes the dataset as one string on
+one thread; `batch` cuts it into ~4 KB documents on line boundaries and uses all
+cores (tiktoken `num_threads=8`; tokforge and tokenizers on their rayon pools).
+
+| Encoding | Dataset | Workload | tokforge | tiktoken | tokenizers | vs tiktoken |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| gpt2 | english | single | 34.5 | 7.8 | 1.2 | 4.44x |
+| gpt2 | english | batch | 54.0 | 15.1 | 4.3 | 3.57x |
+| gpt2 | code | single | 22.0 | 5.8 | 0.9 | 3.79x |
+| gpt2 | code | batch | 45.3 | 15.0 | 4.1 | 3.02x |
+| gpt2 | multilingual | single | 14.5 | 6.3 | 1.2 | 2.29x |
+| gpt2 | multilingual | batch | 24.6 | 8.5 | 3.8 | 2.88x |
+| cl100k_base | english | single | 36.0 | 7.9 | 1.2 | 4.56x |
+| cl100k_base | english | batch | 59.1 | 14.4 | 4.6 | 4.09x |
+| cl100k_base | code | single | 25.5 | 5.5 | 1.0 | 4.62x |
+| cl100k_base | code | batch | 54.4 | 14.4 | 4.6 | 3.78x |
+| cl100k_base | multilingual | single | 11.6 | 5.4 | 1.1 | 2.16x |
+| cl100k_base | multilingual | batch | 19.0 | 8.2 | 3.5 | 2.30x |
+| o200k_base | english | single | 31.8 | 12.0 | 1.2 | 2.65x |
+| o200k_base | english | batch | 53.8 | 17.6 | 4.8 | 3.06x |
+| o200k_base | code | single | 22.1 | 9.1 | 1.0 | 2.42x |
+| o200k_base | code | batch | 50.6 | 20.5 | 4.6 | 2.47x |
+| o200k_base | multilingual | single | 10.9 | 7.7 | 1.2 | 1.41x |
+| o200k_base | multilingual | batch | 20.4 | 8.8 | 3.6 | 2.32x |
+
+MB/s of UTF-8 input, medians of 9 runs after a warm-up. Single runs per
+configuration on a laptop, not paired; a trial run with 3 repeats landed within
+a few percent of every figure. The multilingual set is the deliberately hostile
+corpus, which is why it is the slowest for everyone; o200k on it is the closest
+result.
+
+Two notes on what the numbers do not show. The batch figures include building
+Python lists of ids, which runs on one thread after the parallel part, so the
+batch speed-up over single is smaller than the core's own scaling ("Fifth
+set"). Before the contraction change below, cl100k and o200k on the
+`multilingual` set ran at Hugging Face backend speed, because one `l'été` in the
+corpus sent the whole request to the backend.
+
+Case-folded contractions. The case-insensitive contraction alternative
+`(?i:'s|'t|'re|'ve|'m|'ll|'d)` used to make the core decline any request with an
+apostrophe followed by a non-ASCII scalar, since the regex engine's case folding
+was not modelled. `examples/unicode_tables.rs` now asks Oniguruma which non-ASCII
+scalars the pattern can match in any letter position; over all of Unicode the
+answer is U+017F `ſ`, which folds to `s`. The core treats it as `s`, every other
+non-ASCII scalar as no match, and still declines for any scalar the generated
+`CONTRACTION_FOLDS` table lists that the code does not model. Hard-case declines
+on cl100k went from 5,300 to 0; the quick soak afterwards (all four byte-level
+artifacts, 3,193,264 inputs) had no mismatch and the core served every input
+for GPT-2, cl100k and o200k.
+
+Memory, from `python python/benchmarks/memory.py` (`benchmarks/memory.json`),
+each library in its own process:
+
+| Encoding | Library | After load (MiB) | Peak while loading | Encoding a batch adds |
+| --- | --- | ---: | ---: | ---: |
+| gpt2 | tokforge | 35.2 | 49.6 | 0.0 |
+| gpt2 | tiktoken | 44.3 | 52.4 | 0.0 |
+| cl100k_base | tokforge | 48.5 | 81.0 | 0.0 |
+| cl100k_base | tiktoken | 58.8 | 60.0 | 1.4 |
+| o200k_base | tokforge | 78.1 | 145.7 | 0.0 |
+| o200k_base | tiktoken | 89.1 | 92.4 | 0.7 |
+
+tokforge keeps the Hugging Face tokenizer loaded as its fallback and still holds
+less than tiktoken after loading. The load-time peak is higher on the large
+vocabularies because the core parses its own copy of `tokenizer.json` (every
+merge as a string) next to the backend's; parsing the file once would remove
+most of it. The HTTP server (GPT-2, 4 workers and 16 queue slots, 20 concurrent
+`POST /v1/encode` with 1,017,001-byte bodies and 8.2 MB responses each) went
+from 20.6 MiB idle to a 99.7 MiB peak and answered all 20 with 200 in 0.44 s.
+
 ## Design choices
 
 - Load the tokenizer once for a server or dataset, then share it using `Arc`.

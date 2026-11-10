@@ -66,6 +66,29 @@ complete. Do not repeat installation or repository creation as the next task.
 GitHub authentication was working in the preceding session, but should be
 checked if a later network operation requires it.
 
+### Launch work (2026-11-10)
+
+The project is being prepared for a public release as **tokforge**, following
+`docs/superpowers/plans/2026-11-10-resume-ready-roadmap.md`. Work lands as a
+stack of PRs; merge them in order (each retargets to `main` after the one
+below it merges):
+
+| PR | Branch | Content |
+| --- | --- | --- |
+| #1 | merged | Differential soak, `auto` default, golden check ignores the Python patch version (fixed CI) |
+| #2 | `cache-write-lock` | 16-shard single-hash word cache: 4.6x on 8 threads (PERFORMANCE.md "Fifth set") |
+| #3 | `tokforge` | Rename to tokforge, MIT OR Apache-2.0, `Engine::encode_ids`, Python package (`python/`, PyO3 0.30 abi3), wheel CI |
+| #4 | `gpt4-tokenizers` | cl100k_base and o200k_base in the core, case-folded contractions resolved, both in the reference suite |
+| #5 | `launch` | Head-to-head and memory benchmarks (PERFORMANCE.md "Sixth set"), public README |
+
+Still open for the release: publish to PyPI (needs the user's PyPI account and
+trusted-publisher setup), rename the GitHub repository and make it public (the
+user's decision), the write-up on clairoai.tech, and reducing the core's
+load-time memory peak on large vocabularies. Llama 3 shares cl100k's pattern
+but keeps running on the backend because of its `TemplateProcessing`
+post-processor. Commits in this repo need the per-command safe.directory
+override (see "Local environment details"); never add AI attribution lines.
+
 ## Repository map
 
 | File | Role |
