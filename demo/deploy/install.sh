@@ -1,7 +1,8 @@
 #!/bin/bash
 # Installs or updates the tokforge demo on the VPS. Run as root from a directory
 # holding: tokforge (Linux x86_64 release binary), MANIFEST.json, the three
-# <encoding>.tokenizer.json files, index.html, tokforge@.service, tokforge.caddy.
+# <encoding>.tokenizer.json files, index.html, the assets/ folder, tokforge@.service and
+# tokforge.caddy.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -21,6 +22,8 @@ for enc in "${!PORTS[@]}"; do
   echo "PORT=${PORTS[$enc]}" > "/etc/tokforge/$enc.env"
 done
 install -m 644 index.html /opt/tokforge/www/index.html
+rm -rf /opt/tokforge/www/assets && install -d -m 755 /opt/tokforge/www/assets
+install -m 644 assets/*.jpg /opt/tokforge/www/assets/
 install -m 644 tokforge@.service /etc/systemd/system/tokforge@.service
 
 systemctl daemon-reload
