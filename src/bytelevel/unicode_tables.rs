@@ -3419,3 +3419,10 @@ pub(crate) static O200K_LOWER: &[(u32, u32)] = &[
     (0x31350, 0x323AF),
     (0xE0100, 0xE01EF),
 ];
+
+// Non-ASCII scalars that `(?i:'s|'t|'re|'ve|'m|'ll|'d)` can match through case folding.
+
+#[rustfmt::skip]
+pub(crate) static CONTRACTION_FOLDS: &[(u32, u32)] = &[
+    (0x017F, 0x017F),
+];

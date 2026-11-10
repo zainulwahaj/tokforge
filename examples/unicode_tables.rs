@@ -157,4 +157,54 @@ fn main() {
         "O200K_LOWER",
         &class_ranges(r"[\p{Ll}\p{Lm}\p{Lo}\p{M}]"),
     );
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "// Non-ASCII scalars that `(?i:'s|'t|'re|'ve|'m|'ll|'d)` can match through case folding."
+    )
+    .unwrap();
+    write_table(&mut out, "CONTRACTION_FOLDS", &contraction_folds());
+}
+
+/// Every non-ASCII scalar that Oniguruma's case-insensitive contraction pattern matches in any
+/// letter position: alone after the apostrophe (`'s`, `'t`, `'m`, `'d`, or a scalar folding to a
+/// whole suffix), as the first letter of `'re`/`'ve`/`'ll`, or as their second letter.
+fn contraction_folds() -> Vec<(u32, u32)> {
+    let split = Split::new(
+        SplitPattern::Regex(r"(?i:'s|'t|'re|'ve|'m|'ll|'d)".to_owned()),
+        SplitDelimiterBehavior::Removed,
+        false,
+    )
+    .unwrap();
+    let fully_matched = |text: &str| {
+        let mut pretokenized = PreTokenizedString::from(text);
+        split.pre_tokenize(&mut pretokenized).unwrap();
+        pretokenized
+            .get_splits(OffsetReferential::Original, OffsetType::Byte)
+            .is_empty()
+    };
+    let mut ranges: Vec<(u32, u32)> = Vec::new();
+    for code in 0x80..=char::MAX as u32 {
+        let Some(c) = char::from_u32(code) else {
+            continue;
+        };
+        let folds = [
+            format!("'{c}"),
+            format!("'{c}e"),
+            format!("'{c}l"),
+            format!("'r{c}"),
+            format!("'v{c}"),
+            format!("'l{c}"),
+        ]
+        .iter()
+        .any(|text| fully_matched(text));
+        if !folds {
+            continue;
+        }
+        match ranges.last_mut() {
+            Some(last) if last.1 + 1 == code => last.1 = code,
+            _ => ranges.push((code, code)),
+        }
+    }
+    ranges
 }

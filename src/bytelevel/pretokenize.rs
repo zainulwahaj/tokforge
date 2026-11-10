@@ -13,7 +13,9 @@
 //!
 //! Scalar classes come from `unicode_tables.rs`, captured from the regex engine itself.
 
-use super::unicode_tables::{LETTERS, NUMBERS, O200K_LOWER, O200K_UPPER, WHITESPACE};
+use super::unicode_tables::{
+    CONTRACTION_FOLDS, LETTERS, NUMBERS, O200K_LOWER, O200K_UPPER, WHITESPACE,
+};
 
 /// The exact regex text the Qwen2 family stores in its `Split` pre-tokenizer.
 pub const QWEN2_PATTERN: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
@@ -182,28 +184,53 @@ fn contraction(rest: &[u8]) -> usize {
     }
 }
 
-/// `(?i:'s|'t|'re|'ve|'m|'ll|'d)` over ASCII; a non-ASCII scalar after the apostrophe is
-/// reported so the caller can defer to the regex engine's case folding rules.
+/// The one non-ASCII scalar the regex engine's case folding maps onto a contraction letter:
+/// U+017F LATIN SMALL LETTER LONG S folds to `s`.
+const LONG_S: char = '\u{17f}';
+
+/// A non-ASCII scalar in a contraction letter position: `Ok(true)` if it is the letter `s` by
+/// case folding, `Ok(false)` if it cannot be any contraction letter, and an error for a scalar
+/// that folds onto a contraction letter in a way this code does not model (`CONTRACTION_FOLDS`
+/// is generated from the engine, so a future engine could add one).
+fn folds_to_s(c: char) -> Result<bool, Unsupported> {
+    if c == LONG_S {
+        Ok(true)
+    } else if in_ranges(CONTRACTION_FOLDS, c) {
+        Err(Unsupported::FoldedContraction)
+    } else {
+        Ok(false)
+    }
+}
+
+/// `(?i:'s|'t|'re|'ve|'m|'ll|'d)`, including the engine's case folding of non-ASCII scalars.
 fn contraction_ci(text: &str, pos: usize) -> Result<usize, Unsupported> {
-    let rest = &text.as_bytes()[pos..];
-    if rest.first() != Some(&b'\'') {
+    let rest = &text[pos..];
+    let mut chars = rest.chars();
+    if chars.next() != Some('\'') {
         return Ok(0);
     }
-    let lower = |index: usize| rest.get(index).map(u8::to_ascii_lowercase);
-    if rest.get(1).is_some_and(|b| !b.is_ascii()) {
-        return Err(Unsupported::FoldedContraction);
+    let Some(first) = chars.next() else {
+        return Ok(0);
+    };
+    if !first.is_ascii() {
+        return Ok(if folds_to_s(first)? {
+            1 + first.len_utf8()
+        } else {
+            0
+        });
     }
-    Ok(match lower(1) {
-        Some(b's' | b't' | b'm' | b'd') => 2,
-        Some(b'r' | b'v' | b'l') => {
-            if rest.get(2).is_some_and(|b| !b.is_ascii()) {
-                return Err(Unsupported::FoldedContraction);
-            }
-            match (lower(1), lower(2)) {
-                (Some(b'r'), Some(b'e')) | (Some(b'v'), Some(b'e')) | (Some(b'l'), Some(b'l')) => 3,
-                _ => 0,
-            }
-        }
+    let second = chars.next();
+    if let Some(c) = second.filter(|c| !c.is_ascii()) {
+        // No contraction has `s` second, so a folding scalar there ends the match too; one that
+        // folds some other way is still reported.
+        folds_to_s(c)?;
+    }
+    let second = second
+        .filter(char::is_ascii)
+        .map(|c| c.to_ascii_lowercase());
+    Ok(match (first.to_ascii_lowercase(), second) {
+        ('s' | 't' | 'm' | 'd', _) => 2,
+        ('r' | 'v', Some('e')) | ('l', Some('l')) => 3,
         _ => 0,
     })
 }
@@ -404,9 +431,14 @@ mod tests {
             ["a", "  \n \n", " ", " b"]
         );
         assert_eq!(pieces(Pattern::Qwen2, "x   "), ["x", "   "]);
+        // `ſ` case-folds to `s`, so it completes a contraction; other non-ASCII letters never do.
+        // Expected pieces from Python's `regex` module.
+        assert_eq!(pieces(Pattern::Qwen2, "it'ſ"), ["it", "'ſ"]);
+        assert_eq!(pieces(Pattern::Qwen2, "l'été"), ["l", "'été"]);
+        assert_eq!(pieces(Pattern::Qwen2, "x'ré"), ["x", "'ré"]);
         assert_eq!(
-            split(Pattern::Qwen2, "it'ſ", |_, _| {}),
-            Err(Unsupported::FoldedContraction)
+            pieces(Pattern::Cl100k, "dell'università"),
+            ["dell", "'università"]
         );
     }
 
