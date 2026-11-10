@@ -1,7 +1,7 @@
 # Model artifacts
 
 Place a Hugging Face `tokenizer.json` here and pass its path with
-`--tokenizer models/<file>.json`. `tokenizer info --tokenizer <path>` reports the
+`--tokenizer models/<file>.json`. `tokforge info --tokenizer <path>` reports the
 exact artifact SHA-256 and vocabulary size. All `*.json` files in this directory
 except `MANIFEST.json` are ignored by Git, as is `oracle/`; record each model's
 source and revision in the manifest rather than relying on file names.

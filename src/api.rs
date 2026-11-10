@@ -86,7 +86,7 @@ async fn metrics(State(pool): State<CpuPool>) -> Response {
 }
 
 async fn info(State(pool): State<CpuPool>) -> Json<Value> {
-    Json(json!({"name": "fast-tokenizer", "version": crate::VERSION,
+    Json(json!({"name": "tokforge", "version": crate::VERSION,
         "schema_version": SCHEMA_VERSION, "backend": BACKEND,
         "artifact": pool.engine().artifact(), "options": pool.engine().options(),
         "capacity": pool.capacity(), "in_flight": pool.in_flight(),

@@ -16,9 +16,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use fast_tokenizer::{Chunk, EncodeOptions, Engine, Error, SpecialTokens};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use tokforge::{Chunk, EncodeOptions, Engine, Error, SpecialTokens};
 
 /// Every artifact the manifest must list. Each has its own `#[test]` below so failures are isolated.
 const ARTIFACTS: [&str; 4] = [

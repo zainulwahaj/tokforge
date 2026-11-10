@@ -9,3 +9,9 @@
 /data/
 !/models/MANIFEST.json
 /models/oracle/
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyd
+*.so

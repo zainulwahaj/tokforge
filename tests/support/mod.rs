@@ -1,4 +1,4 @@
-use fast_tokenizer::{
+use tokforge::{
     work::{Cancellation, CpuPool},
     EncodeOptions, Engine,
 };

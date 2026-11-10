@@ -1,16 +1,24 @@
 [package]
-name = "fast-tokenizer"
+name = "tokforge"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Rust tokenization CLI, HTTP API, and streaming dataset processor"
+description = "Fast BPE tokenizer with a from-scratch byte-level core, verified against reference implementations"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/zainulwahaj/tokforge"
+readme = "README.md"
+keywords = ["tokenizer", "bpe", "llm", "nlp", "tiktoken"]
+categories = ["text-processing", "command-line-utilities"]
+
+[workspace]
+members = [".", "python"]
 
 [lib]
-name = "fast_tokenizer"
+name = "tokforge"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tokenizer"
+name = "tokforge"
 path = "src/main.rs"
 
 [dependencies]

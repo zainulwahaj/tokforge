@@ -37,13 +37,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use fast_tokenizer::{
-    bytelevel::{classify, ByteLevelBpe, Class, Fallback, Output, PretokenizeUnsupported},
-    CoreMode, EncodeOptions, Engine, Error, SpecialTokens, BACKEND_CORE,
-};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tokenizers::{Encoding, Tokenizer};
+use tokforge::{
+    bytelevel::{classify, ByteLevelBpe, Class, Fallback, Output, PretokenizeUnsupported},
+    CoreMode, EncodeOptions, Engine, Error, SpecialTokens, BACKEND_CORE,
+};
 use unicode_normalization_alignments::UnicodeNormalization;
 
 // ---------------------------------------------------------------------------------------------
@@ -2319,8 +2319,8 @@ fn main() -> anyhow::Result<()> {
         "random_inputs": args.random,
         "engine_stride": args.engine_stride,
         "scalar_stride": args.scalar_stride,
-        "backend": fast_tokenizer::work::BACKEND,
-        "engine_version": fast_tokenizer::VERSION,
+        "backend": tokforge::work::BACKEND,
+        "engine_version": tokforge::VERSION,
         "artifacts": [],
     });
     let mut total_mismatches = 0u64;

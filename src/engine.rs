@@ -383,6 +383,13 @@ impl Engine {
         self.backend_encode(text).map(Encoding::Backend)
     }
 
+    /// Token ids of `text`, the same as `encode(text)?.ids` without building offsets, masks
+    /// or token strings.
+    pub fn encode_ids(&self, text: &str) -> Result<Vec<u32>, Error> {
+        self.encode_raw(text)
+            .map(|encoding| encoding.ids().to_vec())
+    }
+
     pub fn count(&self, text: &str) -> Result<usize, Error> {
         if let Some(core) = &self.core {
             if let Ok(count) = core.count(text, self.recognize()) {

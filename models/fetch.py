@@ -23,7 +23,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(HERE, "MANIFEST.json")
-USER_AGENT = "fast-tokenizer-fetch/1 (+https://github.com/zainulwahaj/fast-tokenizer)"
+USER_AGENT = "tokforge-fetch/1 (+https://github.com/zainulwahaj/tokforge)"
 
 
 def sha256_file(path: str) -> str:

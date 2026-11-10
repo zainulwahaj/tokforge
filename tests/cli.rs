@@ -6,7 +6,7 @@ use std::{
 use serde_json::Value;
 
 fn run(command: &str, args: &[&str], stdin: Option<&str>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tokenizer"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tokforge"))
         .args([
             command,
             "--tokenizer",

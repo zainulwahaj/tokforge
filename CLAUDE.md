@@ -25,10 +25,14 @@ request additional implementation beyond creating the handoff.
 ## Project identity and environment
 
 - Workspace: `C:\Users\HP\Desktop\fast-tokenizer`.
-- Private repository: <https://github.com/zainulwahaj/fast-tokenizer>.
+- Private repository: <https://github.com/zainulwahaj/fast-tokenizer> (to be
+  renamed `tokforge` and made public at launch; GitHub redirects the old URL).
 - Branch: `main`; origin tracks the repository above.
-- Rust package: `fast-tokenizer`, version `0.1.0`, edition 2021, `publish = false`.
-- Library crate: `fast_tokenizer`; executable: `tokenizer`.
+- Public name **tokforge** (decided 2026-11-10; PyPI and crates.io names were
+  free). Rust package `tokforge`, version `0.1.0`, edition 2021,
+  `publish = false` until release; library crate `tokforge`; executable
+  `tokforge`. License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
+  The local folder keeps its old name.
 - Development machine: Windows x86_64, PowerShell, Intel Core i7-7820HQ
   (4 physical cores / 8 logical processors).
 - Last verified toolchain: rustc 1.99.1; `rust-toolchain.toml` selects stable

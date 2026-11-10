@@ -20,13 +20,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use fast_tokenizer::{
-    api::{router, ApiConfig},
-    batch::{self, BatchConfig},
-    bytelevel::{ByteLevelBpe, Output},
-    work::{Cancellation, CpuPool},
-    CoreMode, EncodeOptions, Engine,
-};
 use serde_json::{json, Value};
 use tokenizers::{
     tokenizer::{
@@ -34,6 +27,13 @@ use tokenizers::{
         PreTokenizer,
     },
     Tokenizer,
+};
+use tokforge::{
+    api::{router, ApiConfig},
+    batch::{self, BatchConfig},
+    bytelevel::{ByteLevelBpe, Output},
+    work::{Cancellation, CpuPool},
+    CoreMode, EncodeOptions, Engine,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
