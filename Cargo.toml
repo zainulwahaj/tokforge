@@ -10,6 +10,9 @@ readme = "README.md"
 keywords = ["tokenizer", "bpe", "llm", "nlp", "tiktoken"]
 categories = ["text-processing", "command-line-utilities"]
 
+[workspace]
+members = [".", "python"]
+
 [lib]
 name = "tokforge"
 path = "src/lib.rs"

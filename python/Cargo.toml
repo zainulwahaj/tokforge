@@ -1,0 +1,16 @@
+[package]
+name = "tokforge-python"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Python bindings for tokforge"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "tokforge"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30", features = ["abi3-py39", "extension-module"] }
+rayon = "1"
+tokforge_core = { package = "tokforge", path = ".." }
