@@ -1,0 +1,50 @@
+# One public demo server per encoding: tokforge@gpt2, tokforge@cl100k_base,
+# tokforge@o200k_base. /etc/tokforge/<encoding>.env sets PORT. Caddy is the
+# only thing that reaches them; they listen on loopback with small limits.
+[Unit]
+Description=tokforge demo API (%i)
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/tokforge/%i.env
+ExecStart=/opt/tokforge/bin/tokforge serve \
+  --tokenizer /opt/tokforge/models/%i.tokenizer.json \
+  --bind 127.0.0.1:${PORT} \
+  --workers 2 --queue-capacity 6 \
+  --max-body-bytes 131072 --timeout-seconds 5
+Restart=on-failure
+RestartSec=2
+
+DynamicUser=yes
+MemoryMax=256M
+CPUQuota=150%
+TasksMax=32
+LimitNOFILE=4096
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

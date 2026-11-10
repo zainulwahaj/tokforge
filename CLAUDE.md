@@ -45,7 +45,8 @@ The project uses Hugging Face's Rust `tokenizers` crate as its tokenizer
 backend. It is building an efficient Rust engine and interfaces around that
 backend; it does not yet implement BPE/Unigram algorithms from scratch, train
 models, or perform model inference. No production tokenizer artifact has been
-selected or bundled. No public service has been deployed.
+selected or bundled. The only public deployment is the demo at
+<https://tokforge.clairoai.tech> (see "Public demo" below).
 
 ## Completed milestones and Git history
 
@@ -287,8 +288,27 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/v1/count -ContentType 
 - Malformed JSON: `400`; unsupported content type: `415`; invalid schema,
   token IDs, or operation budgets: `422`. Errors contain `error.code/message`.
 - Ctrl+C initiates graceful HTTP shutdown and cancels CPU work.
-- This is a local HTTP service without authentication or TLS. No public hosting
-  or production deployment has been configured.
+- This is a local HTTP service without authentication or TLS. Put it behind a
+  proxy before exposing it, as the public demo does.
+
+### Public demo
+
+<https://tokforge.clairoai.tech> runs on the user's Contabo VPS (`ssh contabo`,
+Ubuntu 24.04, Caddy with one file per site in `/etc/caddy/sites/`). Files are
+in `demo/`: `index.html` is the page; `deploy/tokforge@.service` is a systemd
+template run once per encoding (gpt2 on 18101, cl100k_base on 18102,
+o200k_base on 18103, loopback only, 2 workers + 6 slots, 128 KiB bodies, 5 s
+deadline, `DynamicUser`, `MemoryMax=256M`, sandboxed); `deploy/tokforge.caddy`
+serves the page and exposes only `POST /api/<encoding>/v1/{count,encode,chunk}`;
+`deploy/install.sh` verifies the model files against `models/MANIFEST.json`,
+installs to `/opt/tokforge`, and rolls back the Caddy site if it does not
+validate. To update: copy the CI `tokforge-linux-x86_64` binary, the three model
+files, `MANIFEST.json` and the `demo/` files into one directory on the VPS and
+run `install.sh` as root. Measured on 2026-11-10: 40 concurrent 58 KB encodes
+gave 34 responses and 6 `503`s (admission working); memory peaked at 37, 72 and
+145 MiB for gpt2, cl100k_base and o200k_base. Caddy sorts directives by its own
+order, so the API must stay inside `handle /api/*`; a sibling `route` loses to
+the catch-all `handle` and every call 404s.
 
 ## JSONL interface
 

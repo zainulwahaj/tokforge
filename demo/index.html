@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tokforge playground</title>
+<meta name="description" content="Paste text and see how GPT-2, GPT-4 and GPT-4o tokenize it, served by tokforge, a Rust BPE tokenizer that gives the same ids as tiktoken.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='1' y='5' width='8' height='10' rx='2' fill='%23141414'/%3E%3Crect x='11' y='5' width='8' height='10' rx='2' fill='%231d5fbf'/%3E%3C/svg%3E">
+<style>
+:root {
+  --ground: #f2f4f7;
+  --surface: #ffffff;
+  --raised: #eceef2;
+  --border: #e3e6eb;
+  --rule: #eff1f4;
+  --control: #d4d8de;
+  --text: #0a0a0a;
+  --muted: #5f6570;
+  --accent: #141414;
+  --negative: #c4242a;
+  --hue: #1d5fbf;
+  --tok-a: #c8dbf6;
+  --tok-b: #e1e4e9;
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --gap: 12px;
+  --pad: 24px;
+  --control-height: 36px;
+  --fs-title: 24px;
+  --fs-section: 16px;
+  --fs-kpi: 30px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+  --font: "Geist", Inter, system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font: 400 var(--fs-body)/1.5 var(--font);
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+::selection { background: var(--tok-a); }
+
+/* Grid: a centred 1100px column, 12 columns, one 12px gap.
+   Two cards in the top row: 7 + 5 columns = 12, so both land on the column's edges. */
+.page { max-width: 1148px; margin: 0 auto; padding: 32px 24px 48px; }
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+.span-7 { grid-column: span 7; }
+.span-5 { grid-column: span 5; }
+.span-12 { grid-column: span 12; }
+
+/* Header: product mark and name, the title, the install line. */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand svg { flex: none; }
+h1 { font-size: var(--fs-title); font-weight: 500; letter-spacing: -0.01em; margin: 0; line-height: 1.2; }
+.lede { color: var(--muted); margin: 2px 0 0; }
+.links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.install {
+  display: inline-flex; align-items: center; gap: 10px; height: var(--control-height);
+  padding: 0 6px 0 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-control);
+}
+.install code { font: 400 13px/1 var(--mono); }
+.link { text-decoration: none; height: var(--control-height); display: inline-flex; align-items: center; padding: 0 10px; border-radius: var(--radius-control); color: var(--muted); }
+.link:hover { color: var(--text); background: var(--raised); }
+
+/* Cards and controls */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--pad); min-width: 0; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+h2 { font-size: var(--fs-section); font-weight: 500; margin: 0; line-height: 1.3; }
+.meta { color: var(--muted); font-size: var(--fs-small); }
+.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.btn {
+  height: var(--control-height); padding: 0 14px; border-radius: var(--radius-control); border: 0;
+  background: var(--accent); color: #fff; font-weight: 500; transition: background .12s, transform .12s;
+}
+.btn:hover { background: #2b2b2b; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { background: var(--control); cursor: default; transform: none; }
+.btn-ghost { height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-control); background: var(--raised); color: var(--text); font-size: 13px; transition: background .12s; }
+.btn-ghost:hover { background: #dfe2e7; }
+
+.models { display: inline-flex; background: var(--raised); border-radius: var(--radius-control); padding: 3px; gap: 2px; }
+.models button { border: 0; background: transparent; height: 30px; padding: 0 12px; border-radius: 4px; color: var(--muted); transition: background .12s, color .12s; }
+.models button:hover { color: var(--text); }
+.models button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 500; }
+
+.text-card { display: flex; flex-direction: column; }
+textarea {
+  width: 100%; min-height: 236px; flex: 1; resize: vertical; display: block;
+  font: 400 15px/1.55 var(--font); color: var(--text);
+  border: 1px solid var(--control); border-radius: var(--radius-control); padding: 12px 14px; background: var(--surface);
+}
+textarea:focus { outline: none; border-color: var(--hue); }
+.under { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.samples { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.samples .meta { margin-right: 2px; }
+
+/* Figures card */
+.figure { display: flex; align-items: baseline; gap: 8px; }
+.kpi { font-size: var(--fs-kpi); font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+.kpi-unit { color: var(--muted); font-size: 15px; }
+.finding { margin: 6px 0 0; }
+.stale .kpi { color: var(--muted); }
+.compare { margin-top: 22px; }
+.compare table { width: 100%; border-collapse: collapse; }
+.compare th { text-align: left; font-weight: 400; color: var(--muted); font-size: var(--fs-small); padding: 0 0 6px; }
+.compare th.r, .compare td.r { text-align: right; padding-left: 12px; white-space: nowrap; }
+.compare td { padding: 10px 0; border-top: 1px solid var(--rule); vertical-align: middle; }
+.compare tr.sel td { font-weight: 500; }
+.bar { height: 6px; background: var(--raised); border-radius: 3px; overflow: hidden; width: 100%; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: transform .25s ease; transform-origin: left; }
+.compare tr.sel .bar i { background: var(--hue); }
+.compare .barcell { width: 34%; padding-left: 16px; }
+.facts { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.facts div { background: var(--ground); border-radius: var(--radius-control); padding: 10px 12px; }
+.facts b { display: block; font-weight: 500; font-size: 15px; }
+
+/* Token strip: the text itself, cut where the tokenizer cuts it. */
+.strip {
+  font: 400 15px/1.95 var(--font); white-space: pre-wrap; word-break: break-word;
+  max-height: 420px; overflow: auto; padding: 2px;
+}
+.strip span { border-radius: 3px; padding: 1px 0; margin-right: 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.strip span:nth-child(odd) { background: var(--tok-a); }
+.strip span:nth-child(even) { background: var(--tok-b); }
+.strip span:hover, .strip span.on { background: var(--hue); color: #fff; }
+.strip .ws { color: #8b93a1; font-style: normal; }
+.strip span:hover .ws, .strip span.on .ws { color: #d6e2f6; }
+.ids { font: 400 13px/1.9 var(--mono); color: var(--text); word-break: break-word; max-height: 420px; overflow: auto; }
+.ids span { padding: 1px 3px; border-radius: 3px; }
+.ids span:nth-child(odd) { background: var(--tok-a); }
+.ids span:nth-child(even) { background: var(--tok-b); }
+.inspect { margin-top: 12px; min-height: 21px; color: var(--muted); font-size: 13px; }
+.inspect b { color: var(--text); font-weight: 500; }
+.empty { color: var(--muted); padding: 28px 0; }
+.error { color: var(--negative); }
+
+/* Chunks */
+.chunk-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chunk-form label { color: var(--muted); }
+.chunk-form input {
+  width: 84px; height: var(--control-height); border: 1px solid var(--control); border-radius: var(--radius-control);
+  padding: 0 10px; font: inherit; font-variant-numeric: tabular-nums; text-align: right;
+}
+.chunk-form input:focus { outline: none; border-color: var(--hue); }
+.chunks { width: 100%; border-collapse: collapse; }
+.chunks th { text-align: left; font-weight: 400; color: var(--muted); font-size: var(--fs-small); padding: 0 12px 8px 0; }
+.chunks td { padding: 11px 12px 11px 0; border-top: 1px solid var(--rule); vertical-align: top; }
+.chunks .r { text-align: right; white-space: nowrap; }
+.chunks .preview { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; width: 100%; }
+.chunks .rank { color: var(--muted); width: 1%; white-space: nowrap; }
+.chunks .fill { width: 120px; }
+.chunks tr:hover td { background: #fafbfc; }
+.more { margin-top: 12px; }
+
+footer { margin-top: 28px; color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+footer p { margin: 0; max-width: 720px; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .span-7, .span-5 { grid-column: span 12; }
+}
+@media (max-width: 560px) {
+  .page { padding: 16px 16px 40px; }
+  .card { padding: 16px; }
+  .install { display: none; }
+  .models { width: 100%; }
+  .models button { flex: 1; padding: 0 6px; }
+  .chunks .bytes, .chunks .fill { display: none; }
+  textarea { min-height: 180px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <rect x="2" y="8" width="14" height="18" rx="3" fill="#141414"/>
+        <rect x="18" y="8" width="14" height="18" rx="3" fill="#1d5fbf"/>
+      </svg>
+      <div>
+        <h1>tokforge playground</h1>
+        <p class="lede">Count and split text with GPT-2, GPT-4 and GPT-4o tokenizers. Same ids as tiktoken.</p>
+      </div>
+    </div>
+    <nav class="links" aria-label="Project">
+      <span class="install"><code>pip install tokforge</code><button class="btn-ghost" id="copy" type="button">Copy</button></span>
+      <a class="link" href="https://github.com/zainulwahaj/tokforge">GitHub</a>
+      <a class="link" href="https://pypi.org/project/tokforge/">PyPI</a>
+    </nav>
+  </header>
+
+  <main class="grid">
+    <section class="card span-7 text-card" aria-labelledby="h-text">
+      <div class="card-head">
+        <h2 id="h-text">Text</h2>
+        <div class="models" role="group" aria-label="Encoding" id="models">
+          <button type="button" data-enc="o200k_base" aria-pressed="true">GPT-4o</button>
+          <button type="button" data-enc="cl100k_base" aria-pressed="false">GPT-4</button>
+          <button type="button" data-enc="gpt2" aria-pressed="false">GPT-2</button>
+        </div>
+      </div>
+      <label class="sr" for="text">Text to tokenize</label>
+      <textarea id="text" spellcheck="false"></textarea>
+      <div class="under">
+        <div class="samples" id="samples"><span class="meta">Try</span></div>
+        <span class="meta num" id="size"></span>
+      </div>
+    </section>
+
+    <section class="card span-5" aria-labelledby="h-count" id="figures">
+      <div class="card-head">
+        <h2 id="h-count">Token count</h2>
+        <span class="meta" id="enc-name"></span>
+      </div>
+      <div class="figure"><span class="kpi num" id="count">0</span><span class="kpi-unit">tokens</span></div>
+      <p class="finding" id="finding">&nbsp;</p>
+      <div class="compare">
+        <table>
+          <thead><tr><th scope="col">Same text in</th><th scope="col" class="r">Tokens</th><th scope="col" class="r">Chars/token</th><th scope="col" class="barcell"><span class="sr">Relative size</span></th></tr></thead>
+          <tbody id="compare"></tbody>
+        </table>
+      </div>
+      <div class="facts">
+        <div><span class="meta">Vocabulary</span><b class="num" id="vocab">&mdash;</b></div>
+        <div><span class="meta">Round trip from your browser</span><b class="num" id="rtt">&mdash;</b></div>
+      </div>
+    </section>
+
+    <section class="card span-12" aria-labelledby="h-tokens">
+      <div class="card-head">
+        <h2 id="h-tokens">Tokens</h2>
+        <div class="models" role="group" aria-label="Show tokens as" id="view">
+          <button type="button" data-view="text" aria-pressed="true">Text</button>
+          <button type="button" data-view="ids" aria-pressed="false">Ids</button>
+        </div>
+      </div>
+      <div id="tokens" aria-live="polite"><p class="empty">Type or paste text to see where the tokenizer cuts it.</p></div>
+      <p class="inspect" id="inspect">Hover or tap a token to see its id and byte range.</p>
+    </section>
+
+    <section class="card span-12" aria-labelledby="h-chunks">
+      <div class="card-head">
+        <div>
+          <h2 id="h-chunks">Split into chunks</h2>
+          <p class="meta" style="margin:2px 0 0">Cuts prefer a blank line, then a line break, a sentence end, a word. Every chunk is re-encoded to prove it fits.</p>
+        </div>
+        <form class="chunk-form" id="chunk-form">
+          <label for="budget">Max tokens</label>
+          <input id="budget" type="number" min="1" max="100000" value="16" inputmode="numeric">
+          <button class="btn" type="submit" id="split">Split</button>
+        </form>
+      </div>
+      <div id="chunks"><p class="empty">Set a token budget and press Split.</p></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Runs tokforge 0.1.0 with its Rust byte-level BPE core on a small VPS: two workers per encoding and 60 KB of text per request. For anything bigger, install the package; it has no limits.</p>
+    <a class="link" href="https://github.com/zainulwahaj/tokforge#performance">How it is measured</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const LIMIT = 60000;
+const ENCODINGS = [
+  { id: "o200k_base", label: "GPT-4o", name: "o200k_base" },
+  { id: "cl100k_base", label: "GPT-4", name: "cl100k_base" },
+  { id: "gpt2", label: "GPT-2", name: "gpt2" },
+];
+const SAMPLES = {
+  English: "Tokenizers split text into pieces a language model has seen before. Common words stay whole, rare ones break apart, and a space usually belongs to the word after it.\n\nThat is why a prompt that looks short can still cost more than you expect.",
+  Code: "def chunk(text: str, max_tokens: int) -> list[str]:\n    \"\"\"Split text so every piece fits the budget.\"\"\"\n    pieces, start = [], 0\n    while start < len(text):\n        end = fit(text, start, max_tokens)\n        pieces.append(text[start:end])\n        start = end\n    return pieces\n",
+  Multilingual: "Hello from Lahore. لاہور سے سلام۔\n你好，世界。 नमस्ते दुनिया। Bonjour, ça va ?\nNewer vocabularies need far fewer tokens for the same sentence outside English.",
+  Numbers: "Order 48213 shipped on 2026-11-10 at 14:05. Total: $1,284.50 (3 items, 0.75 kg). Pi is 3.14159265358979 and 2**31 - 1 = 2147483647.",
+};
+
+const $ = (id) => document.getElementById(id);
+const text = $("text");
+let enc = "o200k_base";
+let view = "text";
+let last = null;           // { enc, text, encoding }
+let counts = {};           // enc -> count for the current text
+let seq = 0;
+const utf8 = new TextEncoder();
+const decoder = new TextDecoder();
+const fmt = (n) => n.toLocaleString("en-US");
+
+async function api(e, op, body) {
+  const t0 = performance.now();
+  const res = await fetch(`/api/${e}/v1/${op}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const ms = performance.now() - t0;
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = res.status === 503 ? "The demo server is busy. Try again in a second."
+      : res.status === 413 ? "That text is over the demo's request limit."
+      : (data && data.error && data.error.message) || `Request failed (${res.status}).`;
+    throw new Error(msg);
+  }
+  return { data, ms };
+}
+
+function renderSize() {
+  const bytes = utf8.encode(text.value).length;
+  const over = bytes > LIMIT;
+  $("size").textContent = `${fmt([...text.value].length)} characters · ${fmt(bytes)} bytes`;
+  $("size").classList.toggle("error", over);
+  return { bytes, over };
+}
+
+function renderCompare() {
+  const max = Math.max(1, ...ENCODINGS.map((e) => counts[e.id] || 0));
+  const chars = [...text.value].length;
+  $("compare").innerHTML = ENCODINGS.map((e) => {
+    const c = counts[e.id];
+    const has = typeof c === "number";
+    const ratio = has && c > 0 ? (chars / c).toFixed(2) : "—";
+    const w = has ? c / max : 0;
+    return `<tr class="${e.id === enc ? "sel" : ""}"><td>${e.label} <span class="meta">${e.name}</span></td>` +
+      `<td class="r num">${has ? fmt(c) : "—"}</td><td class="r num">${ratio}</td>` +
+      `<td class="barcell"><div class="bar"><i style="transform:scaleX(${w})"></i></div></td></tr>`;
+  }).join("");
+  const mine = counts[enc];
+  const others = ENCODINGS.filter((e) => e.id !== enc && typeof counts[e.id] === "number" && counts[e.id] > 0);
+  if (typeof mine === "number" && mine > 0 && others.length === 2) {
+    const worst = others.reduce((a, b) => (counts[a.id] > counts[b.id] ? a : b));
+    const diff = counts[worst.id] - mine;
+    const label = ENCODINGS.find((e) => e.id === enc).label;
+    $("finding").textContent = diff > 0
+      ? `${label} needs ${fmt(diff)} fewer tokens than ${worst.label} for this text (${Math.round((diff / counts[worst.id]) * 100)}% less).`
+      : diff < 0
+        ? `${label} needs ${fmt(-diff)} more tokens than ${worst.label} for this text.`
+        : `${label} and ${worst.label} need the same number of tokens for this text.`;
+  } else {
+    $("finding").innerHTML = "&nbsp;";
+  }
+}
+
+// Byte-level BPE offsets are UTF-8 byte ranges and can overlap where one character spans tokens
+// (an emoji, a CJK scalar). Overlapping tokens share one visual piece so no byte is drawn twice.
+function pieces(src, encoding) {
+  const bytes = utf8.encode(src);
+  const out = [];
+  encoding.offsets.forEach(([s, e], i) => {
+    const prev = out[out.length - 1];
+    if (prev && s < prev.end) {
+      prev.end = Math.max(prev.end, e);
+      prev.ids.push(encoding.ids[i]);
+    } else {
+      if (prev && s > prev.end) out.push({ start: prev.end, end: s, ids: [], gap: true });
+      out.push({ start: s, end: e, ids: [encoding.ids[i]], first: i });
+    }
+  });
+  const tail = out.length ? out[out.length - 1].end : 0;
+  if (tail < bytes.length) out.push({ start: tail, end: bytes.length, ids: [], gap: true });
+  for (const p of out) p.text = decoder.decode(bytes.subarray(p.start, p.end));
+  return out;
+}
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function visible(s) {
+  return esc(s).replace(/\t/g, '<i class="ws">→</i>').replace(/\n/g, '<i class="ws">↵</i>\n');
+}
+
+function renderTokens() {
+  const box = $("tokens");
+  if (!last || !text.value) {
+    box.innerHTML = '<p class="empty">Type or paste text to see where the tokenizer cuts it.</p>';
+    $("inspect").textContent = "Hover or tap a token to see its id and byte range.";
+    return;
+  }
+  const ps = pieces(last.text, last.encoding);
+  if (view === "ids") {
+    box.innerHTML = `<div class="ids num">${last.encoding.ids.map((id) => `<span>${id}</span>`).join(" ")}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="strip" id="strip">${ps.map((p, i) => p.gap ? esc(p.text) : `<span data-i="${i}">${visible(p.text)}</span>`).join("")}</div>`;
+  const strip = $("strip");
+  const show = (el) => {
+    strip.querySelectorAll(".on").forEach((x) => x.classList.remove("on"));
+    if (!el) return;
+    el.classList.add("on");
+    const p = ps[+el.dataset.i];
+    const many = p.ids.length > 1;
+    $("inspect").innerHTML = `${many ? "Tokens" : "Token"} ${p.ids.length > 1 ? `${fmt(p.first + 1)}–${fmt(p.first + p.ids.length)}` : fmt(p.first + 1)} of ${fmt(last.encoding.ids.length)}: ` +
+      `id <b class="num">${p.ids.join(", ")}</b>, bytes ${fmt(p.start)}–${fmt(p.end)}` +
+      (many ? " (one character split across tokens)" : "");
+  };
+  strip.addEventListener("mouseover", (ev) => show(ev.target.closest("span[data-i]")));
+  strip.addEventListener("click", (ev) => show(ev.target.closest("span[data-i]")));
+}
+
+async function update() {
+  const id = ++seq;
+  const { over } = renderSize();
+  $("enc-name").textContent = enc;
+  if (!text.value) {
+    counts = {}; last = null;
+    $("count").textContent = "0"; $("rtt").textContent = "—";
+    renderCompare(); renderTokens(); return;
+  }
+  if (over) {
+    $("figures").classList.add("stale");
+    $("tokens").innerHTML = `<p class="empty error">This text is over the demo's ${fmt(LIMIT)}-byte limit. Shorten it, or run <code>pip install tokforge</code> locally, which has no limit.</p>`;
+    return;
+  }
+  $("figures").classList.add("stale");
+  const src = text.value;
+  try {
+    const others = ENCODINGS.filter((e) => e.id !== enc).map((e) => api(e.id, "count", { text: src }).then((r) => [e.id, r.data.count]));
+    const main = await api(enc, "encode", { text: src });
+    const rest = await Promise.all(others);
+    if (id !== seq) return;
+    counts = Object.fromEntries(rest);
+    counts[enc] = main.data.encoding.ids.length;
+    last = { enc, text: src, encoding: main.data.encoding };
+    $("count").textContent = fmt(counts[enc]);
+    $("vocab").textContent = `${fmt(main.data.artifact.vocab_size)} tokens`;
+    $("rtt").textContent = `${Math.round(main.ms)} ms`;
+    $("figures").classList.remove("stale");
+    renderCompare(); renderTokens();
+  } catch (err) {
+    if (id !== seq) return;
+    $("tokens").innerHTML = `<p class="empty error">${esc(err.message)}</p>`;
+  }
+}
+
+let timer = 0;
+text.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(update, 220); renderSize(); });
+
+$("models").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-enc]"); if (!b) return;
+  enc = b.dataset.enc;
+  $("models").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  update();
+  if ($("chunks").dataset.done) split();
+});
+$("view").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-view]"); if (!b) return;
+  view = b.dataset.view;
+  $("view").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  renderTokens();
+});
+
+const samples = $("samples");
+Object.keys(SAMPLES).forEach((name) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "btn-ghost"; b.textContent = name;
+  b.addEventListener("click", () => { text.value = SAMPLES[name]; update(); });
+  samples.appendChild(b);
+});
+
+$("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText("pip install tokforge"); $("copy").textContent = "Copied"; }
+  catch { $("copy").textContent = "Select it"; }
+  setTimeout(() => ($("copy").textContent = "Copy"), 1400);
+});
+
+let showAll = false;
+async function split(ev) {
+  if (ev) { ev.preventDefault(); showAll = false; }
+  const box = $("chunks");
+  const budget = parseInt($("budget").value, 10);
+  if (!text.value) { box.innerHTML = '<p class="empty">Type or paste some text first.</p>'; return; }
+  if (!(budget >= 1)) { box.innerHTML = '<p class="empty error">The budget has to be at least 1 token.</p>'; return; }
+  if (renderSize().over) { box.innerHTML = `<p class="empty error">This text is over the demo's ${fmt(LIMIT)}-byte limit.</p>`; return; }
+  $("split").disabled = true;
+  try {
+    const { data } = await api(enc, "chunk", { text: text.value, max_tokens: budget });
+    const rows = data.chunks;
+    const total = rows.reduce((a, c) => a + c.count, 0);
+    const shown = showAll ? rows : rows.slice(0, 6);
+    box.dataset.done = "1";
+    box.innerHTML = `<p class="meta" style="margin:0 0 10px">${fmt(rows.length)} ${rows.length === 1 ? "chunk" : "chunks"} of at most ${fmt(budget)} tokens, ${fmt(total)} tokens in all, every byte of the text kept.</p>` +
+      `<table class="chunks"><thead><tr><th scope="col"><span class="sr">Chunk</span></th><th scope="col">Starts with</th><th scope="col" class="r">Tokens</th><th scope="col" class="fill"><span class="sr">Fill</span></th><th scope="col" class="r bytes">Bytes</th></tr></thead><tbody>` +
+      shown.map((c, i) => `<tr><td class="rank num">${i + 1}.</td><td class="preview">${esc(c.text.replace(/\s+/g, " ").trim()) || '<span class="meta">whitespace only</span>'}</td>` +
+        `<td class="r num">${fmt(c.count)}</td><td class="fill"><div class="bar"><i style="transform:scaleX(${c.count / budget})"></i></div></td>` +
+        `<td class="r num meta bytes">${fmt(c.start_byte)}–${fmt(c.end_byte)}</td></tr>`).join("") +
+      `</tbody></table>` +
+      (rows.length > shown.length ? `<button class="btn-ghost more" type="button" id="all">Show all ${fmt(rows.length)}</button>` : "");
+    const all = $("all");
+    if (all) all.addEventListener("click", () => { showAll = true; split(); });
+  } catch (err) {
+    box.innerHTML = `<p class="empty error">${esc(err.message)}</p>`;
+  } finally {
+    $("split").disabled = false;
+  }
+}
+$("chunk-form").addEventListener("submit", split);
+
+text.value = SAMPLES.Multilingual;
+update();
+split();
+</script>
+</body>
+</html>
