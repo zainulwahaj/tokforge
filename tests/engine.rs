@@ -575,3 +575,40 @@ fn auto_is_the_default_core_mode_since_the_soak_passed() {
     assert_eq!(EncodeOptions::default().core, CoreMode::Auto);
     assert_eq!(engine(false).options().core, CoreMode::Auto);
 }
+
+/// `encode_ids` takes the borrowed fast path; it must give exactly the ids `encode` gives,
+/// for every core and option combination the engine can be loaded with.
+#[test]
+fn encode_ids_matches_encode() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/corpus");
+    let mut texts: Vec<String> = std::fs::read_dir(&corpus)
+        .unwrap()
+        .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    texts.extend(["", " ", "hello world!", "hello [SEP] world"].map(String::from));
+
+    let gpt2 = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("models/gpt2.tokenizer.json");
+    let mut engines = vec![engine(false), engine(true)];
+    if gpt2.exists() {
+        for special_tokens in [SpecialTokens::Literal, SpecialTokens::Recognize] {
+            engines.push(
+                Engine::from_file(
+                    &gpt2,
+                    EncodeOptions {
+                        special_tokens,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            );
+        }
+    }
+    for engine in &engines {
+        for text in &texts {
+            assert_eq!(
+                engine.encode_ids(text).unwrap(),
+                engine.encode(text).unwrap().ids
+            );
+        }
+    }
+}
