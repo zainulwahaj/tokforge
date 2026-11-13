@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tokforge</title>
-<meta name="description" content="tokforge is a BPE tokenizer written in Rust. It returns the same token ids as tiktoken for GPT-4o, GPT-4 and GPT-2, 1.4 to 4.6 times faster. Try it on your own text.">
+<meta name="description" content="tokforge is a BPE tokenizer written in Rust. It returns the same token ids as tiktoken for GPT-4o, GPT-4 and GPT-2, at about the same speed and faster in batches. Try it on your own text.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600&display=swap" rel="stylesheet">
@@ -201,7 +201,7 @@ a.folder:hover { transform: translateY(-10px); }
 .tile .fig { font-size: var(--step-head); font-weight: 600; letter-spacing: -0.04em; line-height: .95; }
 .tile p { max-width: 30ch; }
 .t1 { grid-column: 1 / 7; height: 70vh; min-height: 440px; background: var(--accent); }
-.t1 .fig { font-size: var(--step-display); }
+.t1 .fig { font-size: clamp(3rem, 6.4vw, 6.5rem); }
 .right-col { grid-column: 7 / 13; display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); align-items: start; }
 .right-col h2 { grid-column: 1 / 3; padding: 4px 0 0; height: 14vh; min-height: 96px; font-size: var(--step-head); }
 .t2 { height: 44vh; min-height: 300px; background: var(--paper-ink); color: var(--paper); }
@@ -382,7 +382,7 @@ footer { padding-top: 24px; padding-bottom: 32px; }
   .t2 { height: auto; min-height: 220px; } .t3 { height: auto; min-height: 220px; margin-top: 32px; }
   .tile { padding: 20px; }
   .t2 .fig, .t3 .fig { font-size: 11vw; }
-  .t1 .fig { font-size: 15vw; }
+  .t1 .fig { font-size: 13vw; }
   .rows .inline-preview { display: block; font-size: var(--step-small); color: var(--paper-muted); margin-top: 4px; }
   .rows button { grid-template-columns: 1fr auto; }
   .frame { display: none; }
@@ -422,7 +422,7 @@ footer { padding-top: 24px; padding-bottom: 32px; }
   <div class="hero-copy">
     <h1 class="forge" id="forge" aria-label="tokforge"><span class="p">tok</span><span class="p">forge</span></h1>
     <p class="forge-note" id="forge-note">In GPT-4o this name is two tokens: <b>tok</b> 43,620 and <b>forge</b> 43,555.</p>
-    <p class="lead">A BPE tokenizer written in Rust. Same token ids as tiktoken for GPT-4o, GPT-4 and GPT-2, up to 4.6 times faster.</p>
+    <p class="lead">A BPE tokenizer written in Rust. Same token ids as tiktoken for GPT-4o, GPT-4 and GPT-2, at about the same speed and faster in batches.</p>
   </div>
 
   <div class="stack" aria-label="Sections">
@@ -479,20 +479,20 @@ footer { padding-top: 24px; padding-bottom: 32px; }
   <section class="paper speed wrap" id="speed" aria-labelledby="h-speed">
     <div class="tiles">
       <div class="tile t1 rise">
-        <span class="fig num">4.6x</span>
-        <p>tiktoken's speed on GPT-4's vocabulary, one thread, on this project's own Rust source. The hardest case, mixed scripts and emoji, is still 1.4x.</p>
+        <span class="fig num">0.9 to 1.7x</span>
+        <p>tiktoken's speed on one thread, on Wikipedia, novels in four languages, a Chinese novel and six non-Latin scripts. On GPT-4o's vocabulary it is a little slower on three of the four.</p>
       </div>
       <div class="right-col">
-        <h2 id="h-speed" class="rise">Faster than tiktoken</h2>
-        <div class="tile t2 rise"><span class="fig num">59 MB/s</span><p>GPT-4 on English, batched across 8 threads.</p></div>
-        <div class="tile t3 rise"><span class="fig num">29x</span><p>Hugging Face tokenizers' speed on GPT-2, one thread.</p></div>
+        <h2 id="h-speed" class="rise">Measured against tiktoken</h2>
+        <div class="tile t2 rise"><span class="fig num">1 to 3x</span><p>tiktoken's speed in batches on six cores, same inputs.</p></div>
+        <div class="tile t3 rise"><span class="fig num">4.6x</span><p>on small, repetitive text, where the word cache answers most words. That is the best case.</p></div>
       </div>
     </div>
 
     <div class="index">
       <div>
         <h3 class="rise">Every measured case</h3>
-        <p class="intro rise">Median of nine runs on a 4-core laptop. All three libraries load the same vocabulary, and the benchmark refuses to run unless they return identical ids for every input.</p>
+        <p class="intro rise">Median of five runs of the PyPI package on a 6-core Linux server, one thread, on public text. All three libraries load the same vocabulary, and the benchmark refuses to run unless they return identical ids for every input.</p>
         <ul class="rows" id="rows"></ul>
       </div>
       <div class="frame rise" id="frame" data-ui aria-live="polite">
@@ -545,7 +545,7 @@ footer { padding-top: 24px; padding-bottom: 32px; }
         <p>Speed is only worth having if the ids are right. Every result is compared with the implementation it imitates.</p>
       </div>
       <div class="cell rise"><span class="name">tiktoken</span><p>Golden ids for GPT-2, GPT-4 and GPT-4o on 15 hard corpus files match exactly.</p></div>
-      <div class="cell rise"><span class="name">55,259,448</span><p>Differential inputs run against Hugging Face tokenizers. Zero mismatches.</p></div>
+      <div class="cell rise"><span class="name">110,518,896</span><p>Differential inputs run against Hugging Face tokenizers across four vocabularies. Zero mismatches.</p></div>
       <div class="cell rise"><span class="name">sentencepiece</span><p>Independent goldens for XLM-R, with every divergence written down.</p></div>
       <div class="cell rise"><span class="name">transformers</span><p>Google's original BERT tokenizer as the oracle for WordPiece.</p></div>
       <div class="cell rise"><span class="name">Special tokens</span><p>Treated as plain text by default, so a prompt can never smuggle in an end-of-text id.</p></div>
@@ -808,24 +808,27 @@ update();
 
 /* ---------- Speed: index with preview ---------- */
 const BENCH = [
-  ["cl100k_base", "Rust source", 25.47, 5.51, 0.97],
-  ["cl100k_base", "English docs", 36.0, 7.9, 1.25],
-  ["gpt2", "English docs", 34.52, 7.77, 1.17],
-  ["gpt2", "Rust source", 22.04, 5.82, 0.89],
-  ["o200k_base", "English docs", 31.77, 11.99, 1.24],
-  ["o200k_base", "Rust source", 22.07, 9.12, 0.98],
-  ["gpt2", "Mixed scripts", 14.46, 6.31, 1.17],
-  ["cl100k_base", "Mixed scripts", 11.61, 5.37, 1.11],
-  ["o200k_base", "Mixed scripts", 10.86, 7.69, 1.16],
+  ["cl100k_base", "English Wikipedia", 6.37, 3.67, 0.44],
+  ["cl100k_base", "Six non-Latin scripts", 8.47, 5.06, 0.73],
+  ["gpt2", "Chinese novel", 9.56, 6.51, 0.59],
+  ["cl100k_base", "Chinese novel", 6.29, 4.73, 0.6],
+  ["cl100k_base", "Novels, four languages", 5.39, 4.19, 0.47],
+  ["gpt2", "English Wikipedia", 6.76, 5.39, 0.5],
+  ["gpt2", "Novels, four languages", 6.23, 5.08, 0.49],
+  ["o200k_base", "Chinese novel", 5.38, 4.48, 0.62],
+  ["gpt2", "Six non-Latin scripts", 5.69, 5.56, 0.73],
+  ["o200k_base", "English Wikipedia", 5.96, 6.0, 0.51],
+  ["o200k_base", "Six non-Latin scripts", 5.62, 6.48, 0.64],
+  ["o200k_base", "Novels, four languages", 4.96, 5.77, 0.42],
 ];
 const rows = $("rows");
 rows.innerHTML = BENCH.map(([e, ds, t, k, h], i) =>
-  `<li><button type="button" data-i="${i}"><span class="what">${label(e)}<small>${ds}</small></span><span class="x num">${(t / k).toFixed(1)}x</span>` +
+  `<li><button type="button" data-i="${i}"><span class="what">${label(e)}<small>${ds}</small></span><span class="x num">${(t / k).toFixed(2)}x</span>` +
   `<span class="inline-preview num">${t} MB/s against tiktoken's ${k} and Hugging Face's ${h}</span></button></li>`).join("");
 function preview(i) {
   const [e, ds, t, k, h] = BENCH[i];
   $("frame-cap").textContent = `${label(e)} · ${e}`;
-  $("frame-title").textContent = `${ds}: ${(t / k).toFixed(1)}x tiktoken, ${Math.round(t / h)}x Hugging Face`;
+  $("frame-title").textContent = `${ds}: ${(t / k).toFixed(2)}x tiktoken, ${Math.round(t / h)}x Hugging Face`;
   const max = Math.max(t, k, h);
   $("frame-bars").innerHTML = [["tokforge", t, true], ["tiktoken", k], ["Hugging Face tokenizers", h]].map(([n, v, us]) =>
     `<div class="b${us ? " us" : ""}"><div class="lab"><span>${n}</span><span class="num">${v.toFixed(1)} MB/s</span></div>` +
