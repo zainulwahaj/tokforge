@@ -4,8 +4,8 @@ Fast BPE tokenization for Python, backed by a Rust engine.
 
 GPT-2, GPT-4 (`cl100k_base`), GPT-4o (`o200k_base`) and Qwen2-style tokenizers run on a
 byte-level BPE core written from scratch, checked against tiktoken and Hugging Face `tokenizers`
-by differential tests and long soak runs without a mismatch. On the project's benchmark it is
-1.4x to 4.6x as fast as tiktoken with identical output. Any other Hugging Face `tokenizer.json`
+by differential tests and long soak runs without a mismatch. On public text it runs at
+about tiktoken's speed on one thread and ahead of it in batches, with identical output. Any other Hugging Face `tokenizer.json`
 (BERT, XLM-R, ...) loads too and runs on the Hugging Face backend.
 
 ```python

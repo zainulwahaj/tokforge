@@ -93,6 +93,15 @@ identical to tiktoken on gpt2, cl100k_base and o200k_base. For the next
 release, bump `version` in both `Cargo.toml` and `python/Cargo.toml`, merge,
 then push the matching tag. GitHub retired the `macos-14` runner image, so use
 `macos-latest`.
+Benchmark correction (2026-11-13): the "1.4x to 4.6x as fast as tiktoken"
+headline came from this repository's own small, repetitive files and does not
+hold on varied text. On public corpora (PERFORMANCE.md, "Seventh set") the PyPI
+wheel on Linux is 0.86x to 1.74x tiktoken on one thread and 1.04x to 3.04x in
+batches; core to core in Rust it is 0.56x to 1.37x `tiktoken-rs` and slower
+than GitHub's `bpe-openai` on every input. README, python/README.md and the
+demo page now say this. Do not quote the old range as a general result. The
+PyPI page keeps the old sentence until the next release. The local checkout
+under `Desktop/fast-tokenizer` was deleted; clone from GitHub.
 Still open: the write-up on clairoai.tech, and reducing the core's
 load-time memory peak on large vocabularies. Llama 3 shares cl100k's pattern
 but keeps running on the backend because of its `TemplateProcessing`

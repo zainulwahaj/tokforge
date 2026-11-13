@@ -11,27 +11,39 @@ The page and its server setup are in [`demo/`](demo/).
 
 ## Speed
 
-MB/s of UTF-8 input, median of 9 runs, on a laptop with an Intel Core i7-7820HQ (4 cores, 8
-threads) under Windows. All three libraries load the same tokenizer, and the benchmark refuses to
-run unless they return identical token ids for every input.
+On varied public text tokforge runs at about tiktoken's speed on one thread and ahead of it in
+batches. MB/s of UTF-8 input, median of 5 runs, with the 0.1.0 wheel from PyPI on a Linux server
+(AMD EPYC, 6 vCPUs). All three libraries load the same tokenizer, and the benchmark refuses to run
+unless they return identical token ids for every input.
 
 | Encoding | Input | tokforge | tiktoken | HF tokenizers |
 | --- | --- | ---: | ---: | ---: |
-| gpt2 | English, 1 thread | 34.5 | 7.8 | 1.2 |
-| gpt2 | English, batch on all cores | 54.0 | 15.1 | 4.3 |
-| cl100k_base | English, 1 thread | 36.0 | 7.9 | 1.2 |
-| cl100k_base | English, batch on all cores | 59.1 | 14.4 | 4.6 |
-| cl100k_base | Rust code, 1 thread | 25.5 | 5.5 | 1.0 |
-| o200k_base | English, 1 thread | 31.8 | 12.0 | 1.2 |
-| o200k_base | English, batch on all cores | 53.8 | 17.6 | 4.8 |
-| o200k_base | multilingual hard cases, 1 thread | 10.9 | 7.7 | 1.2 |
+| gpt2 | Wikipedia, 1 thread | 6.8 | 5.4 | 0.5 |
+| gpt2 | Wikipedia, batch on all cores | 17.7 | 10.1 | 5.3 |
+| cl100k_base | Wikipedia, 1 thread | 6.4 | 3.7 | 0.4 |
+| cl100k_base | Wikipedia, batch on all cores | 21.9 | 7.2 | 4.5 |
+| o200k_base | Wikipedia, 1 thread | 6.0 | 6.0 | 0.5 |
+| o200k_base | Wikipedia, batch on all cores | 19.9 | 8.9 | 4.8 |
+| o200k_base | novels in four languages, 1 thread | 5.0 | 5.8 | 0.4 |
+| o200k_base | Chinese novel, batch on all cores | 17.7 | 17.0 | 5.4 |
 
-Across all 18 measured combinations tokforge is 1.4x to 4.6x as fast as tiktoken. The closest
-result is the last row: text built to stress the pre-tokenizer, with many scripts, emoji and
-control characters. "English" is this repository's Markdown documentation and "Rust code" its
-source files, so anyone can rerun the comparison from a checkout:
-[python/benchmarks/compare.py](python/benchmarks/compare.py), results in
-[benchmarks/python-compare.json](benchmarks/python-compare.json).
+The inputs are the first 8 MB of English Wikipedia (enwik8), five Project Gutenberg novels in
+English, Spanish, French and German, a Chinese novel, and the Wikipedia article on Pakistan in
+Urdu, Arabic, Russian, Hindi, Japanese and Korean. Across all 24 combinations tokforge is 0.86x to
+1.74x tiktoken's speed on one thread and 1.04x to 3.04x in batches. It is slower than tiktoken on
+three of the four o200k_base inputs on one thread. Results:
+[benchmarks/python-compare-public-linux.json](benchmarks/python-compare-public-linux.json); rerun
+with [python/benchmarks/compare.py](python/benchmarks/compare.py) and `--corpus`.
+
+Repetitive text is the best case. On this repository's own Markdown and Rust source, which are
+small and repeat the same words, tokforge measured 1.4x to 4.6x tiktoken's speed on a Windows
+laptop, because its word cache answers most words
+([benchmarks/python-compare.json](benchmarks/python-compare.json)). Earlier versions of this README
+gave that range as the headline. It does not hold on varied text.
+
+Core to core in Rust, on the same public inputs and one thread, tokforge ran at 0.56x to 1.37x the
+speed of `tiktoken-rs`, and GitHub's `bpe-openai` crate was faster than tokforge on all eight
+inputs ([PERFORMANCE.md](PERFORMANCE.md), "Seventh set").
 
 Memory ([benchmarks/memory.json](benchmarks/memory.json)): once loaded, tokforge holds less than
 tiktoken (o200k: 78 MiB against 89) and encoding adds nothing measurable. Loading a large
@@ -39,7 +51,7 @@ vocabulary peaks higher (o200k: 146 MiB against 92) while the core parses its ow
 `tokenizer.json`; reducing that is open work. The HTTP server under its default admission bound,
 20 concurrent encode requests of about 1 MB each, peaked at 100 MiB.
 
-## Why it is fast
+## How it works
 
 - Pre-tokenization is hand-written Rust instead of a regex engine. Each pattern (GPT-2, Qwen2,
   cl100k, o200k) is reproduced alternative by alternative in the regex's own backtracking order,
