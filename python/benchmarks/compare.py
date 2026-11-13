@@ -20,6 +20,10 @@ Workloads:
   (tiktoken num_threads=os.cpu_count(); tokforge and tokenizers use their rayon pools)
 
 Each figure is the median of --repeat timed runs after one warm-up run, in MB/s of UTF-8 input.
+
+Outside text replaces the built-in datasets with --corpus NAME=PATH[,PATH...][@MAX_BYTES], repeatable,
+for example --corpus wikipedia=data/bench/enwik8@8000000. Files are joined with a newline and cut
+to MAX_BYTES on a character boundary. --models points at another directory of tokenizer files.
 """
 
 from __future__ import annotations
@@ -43,6 +47,15 @@ def datasets() -> dict[str, str]:
     corpus = sorted((ROOT / "tests" / "fixtures" / "corpus").glob("*.txt"))
     read = lambda paths: "\n".join(p.read_text(encoding="utf-8") for p in paths)
     return {"english": read(docs), "code": read(rust), "multilingual": read(corpus)}
+
+
+def corpus(spec: str) -> tuple[str, str]:
+    name, _, rest = spec.partition("=")
+    paths, _, limit = rest.partition("@")
+    text = "\n".join(Path(p).read_text(encoding="utf-8", errors="replace") for p in paths.split(","))
+    if limit:
+        text = text.encode("utf-8")[: int(limit)].decode("utf-8", errors="ignore")
+    return name, text
 
 
 def batch_of(text: str, size: int = 4096) -> list[str]:
@@ -73,6 +86,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repeat", type=int, default=9)
     parser.add_argument("--output")
+    parser.add_argument("--corpus", action="append", default=[], help="NAME=PATH[,PATH...][@MAX_BYTES]")
+    parser.add_argument("--encodings", default=",".join(ENCODINGS))
+    parser.add_argument("--models", default=str(ROOT / "models"))
     args = parser.parse_args()
 
     import tiktoken
@@ -80,11 +96,12 @@ def main() -> int:
     import tokforge
 
     threads = os.cpu_count() or 1
-    data = datasets()
+    data = dict(corpus(c) for c in args.corpus) if args.corpus else datasets()
     batches = {name: batch_of(text) for name, text in data.items()}
     results = []
-    for encoding in ENCODINGS:
-        path = ROOT / "models" / f"{encoding}.tokenizer.json"
+    encodings = args.encodings.split(",")
+    for encoding in encodings:
+        path = Path(args.models) / f"{encoding}.tokenizer.json"
         if not path.exists():
             print(f"skip {encoding}: {path} not fetched", file=sys.stderr)
             continue
@@ -124,6 +141,7 @@ def main() -> int:
         "versions": {"tokforge": tokforge.__version__, "tiktoken": tiktoken.__version__, "tokenizers": tokenizers.__version__},
         "method": __doc__.split("Workloads:")[1].strip(),
         "repeat": args.repeat,
+        "datasets": {name: len(text.encode("utf-8")) for name, text in data.items()},
         "results": results,
     }
     if args.output:
@@ -131,7 +149,7 @@ def main() -> int:
 
     print(f"\n{'encoding':12s} {'dataset':13s} {'workload':8s} {'tokforge':>9s} {'tiktoken':>9s} {'tokenizers':>11s}  vs tiktoken")
     key = lambda r: (r["encoding"], r["dataset"], r["workload"])
-    for group in sorted({key(r) for r in results}, key=lambda g: (ENCODINGS.index(g[0]), g[1], g[2] != "single")):
+    for group in sorted({key(r) for r in results}, key=lambda g: (encodings.index(g[0]), g[1], g[2] != "single")):
         row = {r["library"]: r["mb_per_s"] for r in results if key(r) == group}
         print(f"{group[0]:12s} {group[1]:13s} {group[2]:8s} {row['tokforge']:9.1f} {row['tiktoken']:9.1f} {row['tokenizers']:11.1f}  {row['tokforge'] / row['tiktoken']:5.2f}x")
     print("\nMB/s of UTF-8 input, median of", args.repeat, "runs;", report["machine"]["cpu"], f"({threads} logical CPUs)")
