@@ -321,6 +321,12 @@ of the same shape that runs in seconds. `--self-test` swaps the core's
 special-token mode so mismatches appear, which checks the reporting and the
 shrinker rather than the core.
 
+The same soak ran on the cl100k_base and o200k_base artifacts on 2026-11-10
+and 2026-11-11 (same seed, 8 threads, 5,344 s): 55,259,448 inputs, 6,907,431
+per artifact and option combination, with zero mismatches and zero declines.
+Across the four byte-level artifacts that is 110,518,896 inputs. The run's log
+and JSON report were not kept.
+
 ## Fifth set: word-cache scaling (sharded, single-hash cache)
 
 Measured 2026-11-10 on the development laptop (i7-7820HQ, 4 cores / 8
@@ -401,6 +407,9 @@ rerun before the public release.
 
 ## Sixth set: head-to-head against tiktoken and Hugging Face tokenizers
 
+These inputs are small and repetitive, which favours the word cache. The
+seventh set repeats the comparison on public text and gives smaller numbers.
+
 Measured 2026-11-10 on the development laptop with
 `python python/benchmarks/compare.py --repeat 9` (tokforge 0.1.0, tiktoken
 0.14.0, tokenizers 0.22.2, Python 3.14). Raw results:
@@ -478,6 +487,74 @@ merge as a string) next to the backend's; parsing the file once would remove
 most of it. The HTTP server (GPT-2, 4 workers and 16 queue slots, 20 concurrent
 `POST /v1/encode` with 1,017,001-byte bodies and 8.2 MB responses each) went
 from 20.6 MiB idle to a 99.7 MiB peak and answered all 20 with 200 in 0.44 s.
+
+## Seventh set: public corpora on Linux, and a Rust-level comparison
+
+The sixth set's inputs are this repository's own files. They are small (112 KB
+of Markdown, 460 KB of Rust) and repeat the same words, so the word cache
+answers almost every lookup. This set repeats the comparison on public text
+that does not favour the cache.
+
+Inputs: the first 8 MB of English Wikipedia (`enwik8`, `wikipedia`); five
+Project Gutenberg novels in English, Spanish, French and German, 4.9 MB
+(`books`); one Chinese novel, 2.6 MB (`chinese`); and the Wikipedia article on
+Pakistan in Urdu, Arabic, Russian, Hindi, Japanese and Korean, 0.5 MB
+(`world`).
+
+### Python packages on Linux
+
+Measured 2026-11-10 on a Contabo VPS (AMD EPYC, 6 vCPUs, Ubuntu 24.04, Python
+3.12) with tokforge 0.1.0 installed from PyPI, tiktoken 0.14.0 and tokenizers
+0.23.3: `python python/benchmarks/compare.py --repeat 5 --corpus NAME=PATH...`.
+Raw results: `benchmarks/python-compare-public-linux.json`. Every library
+returned ids identical to tiktoken's on every input before timing. MB/s:
+
+| Encoding | Dataset | tokforge 1T | tiktoken 1T | tokenizers 1T | vs tiktoken | tokforge batch | tiktoken batch | tokenizers batch | vs tiktoken |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| gpt2 | wikipedia | 6.8 | 5.4 | 0.5 | 1.25x | 17.7 | 10.1 | 5.3 | 1.75x |
+| gpt2 | books | 6.2 | 5.1 | 0.5 | 1.23x | 17.7 | 10.5 | 4.5 | 1.68x |
+| gpt2 | chinese | 9.6 | 6.5 | 0.6 | 1.47x | 23.4 | 15.2 | 4.8 | 1.54x |
+| gpt2 | world | 5.7 | 5.6 | 0.7 | 1.02x | 18.0 | 9.2 | 4.3 | 1.95x |
+| cl100k_base | wikipedia | 6.4 | 3.7 | 0.4 | 1.74x | 21.9 | 7.2 | 4.5 | 3.04x |
+| cl100k_base | books | 5.4 | 4.2 | 0.5 | 1.29x | 15.3 | 10.1 | 3.5 | 1.51x |
+| cl100k_base | chinese | 6.3 | 4.7 | 0.6 | 1.33x | 18.5 | 7.7 | 5.6 | 2.41x |
+| cl100k_base | world | 8.5 | 5.1 | 0.7 | 1.67x | 18.9 | 6.2 | 3.9 | 3.04x |
+| o200k_base | wikipedia | 6.0 | 6.0 | 0.5 | 0.99x | 19.9 | 8.9 | 4.8 | 2.24x |
+| o200k_base | books | 5.0 | 5.8 | 0.4 | 0.86x | 18.1 | 11.8 | 3.7 | 1.54x |
+| o200k_base | chinese | 5.4 | 4.5 | 0.6 | 1.20x | 17.7 | 17.0 | 5.4 | 1.04x |
+| o200k_base | world | 5.6 | 6.5 | 0.6 | 0.87x | 20.8 | 12.2 | 4.4 | 1.69x |
+
+On one thread tokforge is 0.86x to 1.74x tiktoken's speed; in batches on six
+cores it is 1.04x to 3.04x. It is slower than tiktoken on three of the four
+o200k_base single-thread inputs. Against Hugging Face tokenizers it is 3.3x to
+16.2x. The sixth set's 1.4x to 4.6x range is a best case for repetitive text
+and should not be quoted as the general result.
+
+### Rust cores on the development laptop
+
+Measured 2026-11-11, one thread, median of 7 runs, with a small harness that
+linked tokforge's `Engine::encode_ids`, `tiktoken-rs` 0.12.1 and GitHub's
+`bpe-openai` 0.3.2. All three returned identical ids on every input. "Cache
+off" is tokforge with the word-cache lookup skipped by a benchmark-only patch
+that is not in this repository. The harness lived outside the repository and
+its raw output was not kept; these are the recorded figures, in MB/s:
+
+| Encoding | Dataset | tokforge | tokforge, cache off | tiktoken-rs | bpe-openai |
+| --- | --- | ---: | ---: | ---: | ---: |
+| cl100k_base | wikipedia | 11.3 | 7.2 | 8.3 | 12.0 |
+| cl100k_base | books | 7.9 | 7.0 | 8.0 | 10.6 |
+| cl100k_base | chinese | 9.4 | 9.8 | 8.0 | 14.3 |
+| cl100k_base | world | 10.3 | 11.2 | 7.6 | 14.0 |
+| o200k_base | wikipedia | 10.7 | 6.7 | 12.6 | 11.2 |
+| o200k_base | books | 7.3 | 6.6 | 13.0 | 11.1 |
+| o200k_base | chinese | 7.1 | 7.5 | 8.4 | 14.8 |
+| o200k_base | world | 7.7 | 8.1 | 9.5 | 16.3 |
+
+tokforge is 0.56x to 1.37x the speed of `tiktoken-rs` and slower than
+`bpe-openai` on all eight inputs. The cache is worth 1.1x to 1.6x on English
+text and nothing on the Chinese and mixed-script inputs, where few words
+repeat. The merge loop and the o200k pre-tokenizer are the places to look
+before claiming more.
 
 ## Design choices
 
