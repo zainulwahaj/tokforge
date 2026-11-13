@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "tokforge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1285,7 +1285,7 @@ dependencies = [
 
 [[package]]
 name = "tokforge-python"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pyo3",
  "rayon",

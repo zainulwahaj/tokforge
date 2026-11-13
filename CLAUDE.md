@@ -29,7 +29,7 @@ request additional implementation beyond creating the handoff.
   `fast-tokenizer` and made public on 2026-11-10; GitHub redirects the old URL).
 - Branch: `main`; origin tracks the repository above.
 - Public name **tokforge** (decided 2026-11-10; PyPI and crates.io names were
-  free). Rust package `tokforge`, version `0.1.0`, edition 2021,
+  free). Rust package `tokforge`, version `0.1.1`, edition 2021,
   `publish = false` until release; library crate `tokforge`; executable
   `tokforge`. License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
   The local folder keeps its old name.
@@ -100,7 +100,8 @@ wheel on Linux is 0.86x to 1.74x tiktoken on one thread and 1.04x to 3.04x in
 batches; core to core in Rust it is 0.56x to 1.37x `tiktoken-rs` and slower
 than GitHub's `bpe-openai` on every input. README, python/README.md and the
 demo page now say this. Do not quote the old range as a general result. The
-PyPI page keeps the old sentence until the next release. The local checkout
+0.1.1 is the same code as 0.1.0, released so the PyPI page carries the
+corrected description. The local checkout
 under `Desktop/fast-tokenizer` was deleted; clone from GitHub.
 Still open: the write-up on clairoai.tech, and reducing the core's
 load-time memory peak on large vocabularies. Llama 3 shares cl100k's pattern

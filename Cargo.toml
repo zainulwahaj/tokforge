@@ -1,6 +1,6 @@
 [package]
 name = "tokforge"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 publish = false
 description = "Fast BPE tokenizer with a from-scratch byte-level core, verified against reference implementations"
